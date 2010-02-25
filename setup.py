@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
-from distutils.core import setup
+try:
+    from setuptools import setup
+except ImportError:
+    from distutils import setup
 
 setup(
     name="pydc1394",
