@@ -46,6 +46,7 @@ class TestInstantiation(LibBase):
     def test(self):
         cams = self.l.enumerate_cameras()
         c = Camera(self.l, cams[0]['guid'])
+        c.close()
 
 # From now on, we assume that we can get a camera instance
 class TestCamera(CamBase):
@@ -61,9 +62,9 @@ class TestCamera(CamBase):
     def test_reset(self):
         self.c.start()
         self.c.reset_bus()
-        
+
         eq_(self.c.running, False)
-        
+
         self.c.start()
         self.c.shot()
         self.c.stop()
