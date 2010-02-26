@@ -185,25 +185,8 @@ class _CamAcquisitonThread(Thread):
             if sa:
                 break
 
-            if self._last_frame:
-                self._cam._dll.dc1394_capture_enqueue( self._cam._cam, self._last_frame )
-
-            #the actual image acquisition:
-            frame = POINTER(video_frame_t)()
-            self._cam._dll.dc1394_capture_dequeue(self._cam._cam, CAPTURE_POLICY_WAIT, byref(frame));
-
-            #get the buffer from the frame (this is part of the ring buffer):
-            Dtype = c_char*frame.contents.image_bytes
-            buf = Dtype.from_address(frame.contents.image)
-
-            self._last_frame = frame
-
+            img = self._cam.capture(poll=False)
             self._condition.acquire()
-            #generate an Image class from the buffer:
-            img = fromstring(buf, dtype=self._cam._dtype).reshape(self._cam._shape).view(Image)
-            img._position,img._packet_size, img._packets_per_frame, img._timestamp, img._frames_behind, \
-                    img._id = frame.contents.position, frame.contents.packet_size, frame.contents.packets_per_frame, \
-                              frame.contents.timestamp, frame.contents.frames_behind,frame.contents.id
             self._cam._current_img = img
 
             #is the camera streaming to a queue?
@@ -214,10 +197,6 @@ class _CamAcquisitonThread(Thread):
             self._condition.notifyAll()
             self._condition.release()
 
-        # Return the last frame
-        if self._last_frame:
-            self._cam._dll.dc1394_capture_enqueue( self._cam._cam, self._last_frame )
-        self._last_frame = None
 #end of class _CamAcquisitonThread
 
 ##################################################################################
@@ -611,6 +590,74 @@ class Camera(object):
     def __del__(self):
         self.close()
     #end of __del__
+    
+    def flush(self):
+        """
+        flush the DMA buffer
+        """
+        frame = POINTER(video_frame_t)()
+        while True:
+            self._dll.dc1394_capture_dequeue(self._cam,
+                    CAPTURE_POLICY_POLL, byref(frame))
+            if not frame:
+                break
+            self._dll.dc1394_capture_enqueue(self._cam,
+                    frame)
+
+    def capture(self, poll=False):
+        frame = POINTER(video_frame_t)()
+        policy = poll and CAPTURE_POLICY_POLL or CAPTURE_POLICY_WAIT
+        self._dll.dc1394_capture_dequeue(self._cam,
+                policy, byref(frame))
+        if frame.contents.image == 0:
+            return
+        if self._dll.dc1394_capture_is_frame_corrupt(self._cam,
+                frame):
+            print "frame %s corrupt" % frame
+        #get the buffer from the frame (this is part of the ring buffer):
+        dtyp = c_char*frame.contents.image_bytes
+        buf = dtyp.from_address(frame.contents.image)
+        #generate an Image class from the buffer:
+        img = fromstring(buf, dtype=self._dtype).reshape(
+                self._shape).view(Image)
+        #enqueue the buffer since fromstring copies data
+        self._dll.dc1394_capture_enqueue(self._cam,
+                frame)
+        img._position = frame.contents.position
+        img._packet_size = frame.contents.packet_size
+        img._packets_per_frame = frame.contents.packets_per_frame
+        img._timestamp = frame.contents.timestamp
+        img._frames_behind = frame.contents.frames_behind
+        img._id = frame.contents.id
+        # self._current_img = img
+        return img
+
+    def start_capture(self, bufsize=4):
+        self._dll.dc1394_capture_setup( self._cam, bufsize, \
+                    capture_flag_codes["CAPTURE_FLAGS_DEFAULT"] )
+
+    def start_video(self):
+        # Start the acquisition
+        self._dll.dc1394_video_set_transmission( self._cam, 1 )
+
+    def start_one_shot(self):
+        self._dll.dc1394_video_set_one_shot( self._cam, 1 )
+
+    def start_multi_shot(self, n):
+        self._dll.dc1394_video_set_multi_shot( self._cam, n, 1 )
+
+    def stop_multi_shot(self):
+        self._dll.dc1394_video_set_multi_shot( self._cam, 0, 0 )
+
+    def stop_one_shot(self):
+        self._dll.dc1394_video_set_one_shot( self._cam, 0 )
+
+    def stop_video(self):
+        #stop the camera:
+        self._dll.dc1394_video_set_transmission( self._cam, 0 )
+
+    def stop_capture(self):
+        self._dll.dc1394_capture_stop( self._cam )
 
     def start( self, bufsize = 4, interactive = False ):
         """
@@ -628,16 +675,8 @@ class Camera(object):
         if not self._cam:
             raise RuntimeError, "The camera is not opened!"
 
-        # Set video mode and everything: done by the actual fsets in
-        #self.mode, self.isospeed and self.fps
-        #self._dll.dc1394_video_set_iso_speed( self._cam, self._wanted_speed )
-        #self._dll.dc1394_video_set_mode( self._cam, self._wanted_mode )
-        #self._dll.dc1394_video_set_framerate( self._cam, self._wanted_frate )
-        self._dll.dc1394_capture_setup( self._cam, bufsize, \
-                    capture_flag_codes["CAPTURE_FLAGS_DEFAULT"])
-
-        # Start the acquisition
-        self._dll.dc1394_video_set_transmission( self._cam, 1 )
+        self.start_capture(bufsize)
+        self.start_video()
 
         self._queue = None if interactive else Queue(1000)
 
@@ -661,10 +700,9 @@ class Camera(object):
 
         self._queue = None
 
-        #stop the camera:
-        self._dll.dc1394_capture_stop( self._cam )
-        self._dll.dc1394_video_set_transmission( self._cam, 0 )
-        
+        self.stop_video()
+        self.stop_capture()
+
         #stop the thread:
         self._running_lock.acquire()
         self._running = False
