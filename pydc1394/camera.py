@@ -264,11 +264,6 @@ class CameraProperty(object):
             min, max = c_float(), c_float()
             self._dll.dc1394_feature_get_absolute_boundaries( self._cam._cam,\
                                                 self._id, byref(min),byref(max))
-            # We want shutter in ms
-            if self._name == "shutter":
-                min.value *=1000
-                max.value *=1000
-            #end if name
         else:
             min, max = c_uint32(), c_uint32()
             self._dll.dc1394_feature_get_boundaries( self._cam._cam, self._id, byref(min),byref(max))
@@ -580,7 +575,10 @@ class Camera(object):
     def __del__(self):
         self.close()
     #end of __del__
-    
+   
+    def power(self, on=True):
+        self._dll.dc1394_camera_set_power(self._cam, on)
+
     def flush(self):
         """
         flush the DMA buffer
@@ -589,7 +587,7 @@ class Camera(object):
         while True:
             self._dll.dc1394_capture_dequeue(self._cam,
                     CAPTURE_POLICY_POLL, byref(frame))
-            if not frame:
+            if not bool(frame):
                 break
             self._dll.dc1394_capture_enqueue(self._cam,
                     frame)
@@ -599,7 +597,7 @@ class Camera(object):
         policy = poll and CAPTURE_POLICY_POLL or CAPTURE_POLICY_WAIT
         self._dll.dc1394_capture_dequeue(self._cam,
                 policy, byref(frame))
-        if frame.contents.image == 0:
+        if not bool(frame):
             return
         if self._dll.dc1394_capture_is_frame_corrupt(self._cam,
                 frame):
@@ -1193,7 +1191,7 @@ class Camera(object):
                         self._wanted_mode,
                         byref(fi))
                 #this should be corrected:
-                return 1.0/fi.value
+                return (1.0/fi.value if fi.value else 0)
             #end if
         #end fget
 
