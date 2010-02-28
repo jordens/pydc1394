@@ -141,6 +141,11 @@ class Image(ndarray):
     def id(self):
         "the frame position in the ring buffer"
         return self._id
+    @property
+    def corrupt(self):
+        "corrupt image marker (marked by libdc1394)"
+        return self._corrupt
+
     # TODO add here:
     # depth -> number of bits/pixel in the image
     # endianness or bytes are swapped bool (framge -> little_endian == False)
@@ -599,9 +604,6 @@ class Camera(object):
                 policy, byref(frame))
         if not bool(frame):
             return
-        if self._dll.dc1394_capture_is_frame_corrupt(self._cam,
-                frame):
-            print "frame %s corrupt" % frame
         #get the buffer from the frame (this is part of the ring buffer):
         dtyp = c_char*frame.contents.image_bytes
         buf = dtyp.from_address(frame.contents.image)
@@ -617,6 +619,8 @@ class Camera(object):
         img._timestamp = frame.contents.timestamp
         img._frames_behind = frame.contents.frames_behind
         img._id = frame.contents.id
+        img._corrupt = bool(self._dll.dc1394_capture_is_frame_corrupt(
+                self._cam, frame))
         # self._current_img = img
         return img
 
