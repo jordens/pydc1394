@@ -387,18 +387,18 @@ TRIGGER_SOURCE_MIN = min( trigger_source_vals.keys())
 TRIGGER_SOURCE_MAX = max( trigger_source_vals.keys())
 TRIGGER_SOURCE_NUM =(TRIGGER_SOURCE_MAX - TRIGGER_SOURCE_MIN + 1)
 
+trigger_polarity_vals = {
+      704: 'TRIGGER_ACTIVE_LOW',
+      705: 'TRIGGER_ACTIVE_HIGH',
+}
 #for some reason my camera reports 0 and 1
 # on the http://damien.douxchamps.net/ieee1394/libdc1394/v2.x/api/types/
 #it also reports 0 and 1 values
 #in my current control.h:
 #trigger_polarity_vals = {
-#      704: 'TRIGGER_ACTIVE_LOW',
-#      705: 'TRIGGER_ACTIVE_HIGH',
+#      0: 'TRIGGER_ACTIVE_LOW',
+#      1: 'TRIGGER_ACTIVE_HIGH',
 #}
-trigger_polarity_vals = {
-      0: 'TRIGGER_ACTIVE_LOW',
-      1: 'TRIGGER_ACTIVE_HIGH',
-}
 trigger_polarity_codes = invert_dict( trigger_polarity_vals )
 
 trigger_polarity_t = c_int

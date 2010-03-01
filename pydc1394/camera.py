@@ -414,7 +414,7 @@ class CameraProperty(object):
 
         def fset(self, pol):
             if self.polarity_capable:
-                if trigger_polarity_codes.has_key( pol ):
+                if pol in trigger_polarity_codes:
                     key = trigger_polarity_codes[ pol ]
                     _dll.dc1394_external_trigger_set_polarity( self._cam._cam, key )
                 else:
