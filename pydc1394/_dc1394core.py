@@ -25,11 +25,7 @@ except :
 #A dict structure should be more flexible.
 
 def invert_dict( to_invert ):
-    res = {}
-    for (i,j) in to_invert.iteritems():
-        res[j] = i
-    #end for
-    return res
+    return dict((j, i) for i, j in to_invert.iteritems())
 #end invert_dict
 
 #All error values to be interpreted:
@@ -432,172 +428,159 @@ capture_flag_vals = invert_dict( capture_flag_codes )
 ###########################################################################
 
 class color_codings_t(Structure):
-     pass
-color_codings_t._fields_ = [
-    ("num", c_uint32),
-    ("codings", (color_coding_t)*COLOR_CODING_NUM),
-]
+    _fields_ = [
+        ("num", c_uint32),
+        ("codings", (color_coding_t)*COLOR_CODING_NUM),
+    ]
 
 # Video modes
 class video_modes_t(Structure):
-     pass
-video_modes_t._fields_ = [
-    ("num", c_uint32),
-    ("modes", (video_mode_t)*VIDEO_MODE_NUM),
-]
+    _fields_ = [
+        ("num", c_uint32),
+        ("modes", (video_mode_t)*VIDEO_MODE_NUM),
+    ]
 
 #For some obscured reason this overrides the video_mode_t
 #We do not need this (hopefully)
 #class video_mode_t(Structure):
-#     pass
-#video_mode_t._fields_ = [
-#    ("num", c_uint32),
-#    ("modes", (video_mode_t)*VIDEO_MODE_NUM),
-#]
+#    _fields_ = [
+#        ("num", c_uint32),
+#        ("modes", (video_mode_t)*VIDEO_MODE_NUM),
+#    ]
 
 #these folks have logical ON/OFF = True/False values
 bool_t = c_int
 switch_t = c_int
 
 class camera_t(Structure):
-     pass
-camera_t._fields_ = [
-    ("guid", c_uint64),
-    ("unit", c_int),
-    ("unit_spec_ID", c_uint32),
-    ("unit_sw_version", c_uint32),
-    ("unit_sub_sw_version", c_uint32),
-    ("command_registers_base", c_uint32),
-    ("unit_directory", c_uint32),
-    ("unit_dependent_directory", c_uint32),
-    ("advanced_features_csr", c_uint64),
-    ("PIO_control_csr", c_uint64),
-    ("SIO_control_csr", c_uint64),
-    ("strobe_control_csr", c_uint64),
-    ("format7_csr", (c_uint64)*8),
-    ("iidc_version", iidc_version_t),
-    ("vendor", c_char_p),
-    ("model", c_char_p),
-    ("vendor_id", c_uint32),
-    ("model_id", c_uint32),
-    ("bmode_capable", bool_t),
-    ("one_shot_capable", bool_t),
-    ("multi_shot_capable", bool_t),
-    ("can_switch_on_off", bool_t),
-    ("has_vmode_error_status", bool_t),
-    ("has_feature_error_status", bool_t),
-    ("max_mem_channel", c_int),
-    ("flags", c_uint32),
-]
+    _fields_ = [
+        ("guid", c_uint64),
+        ("unit", c_int),
+        ("unit_spec_ID", c_uint32),
+        ("unit_sw_version", c_uint32),
+        ("unit_sub_sw_version", c_uint32),
+        ("command_registers_base", c_uint32),
+        ("unit_directory", c_uint32),
+        ("unit_dependent_directory", c_uint32),
+        ("advanced_features_csr", c_uint64),
+        ("PIO_control_csr", c_uint64),
+        ("SIO_control_csr", c_uint64),
+        ("strobe_control_csr", c_uint64),
+        ("format7_csr", (c_uint64)*8),
+        ("iidc_version", iidc_version_t),
+        ("vendor", c_char_p),
+        ("model", c_char_p),
+        ("vendor_id", c_uint32),
+        ("model_id", c_uint32),
+        ("bmode_capable", bool_t),
+        ("one_shot_capable", bool_t),
+        ("multi_shot_capable", bool_t),
+        ("can_switch_on_off", bool_t),
+        ("has_vmode_error_status", bool_t),
+        ("has_feature_error_status", bool_t),
+        ("max_mem_channel", c_int),
+        ("flags", c_uint32),
+    ]
 
 class camera_id_t(Structure):
-     pass
-camera_id_t._fields_ = [
-    ("unit", c_uint16),
-    ("guid", c_uint64),
-]
+    _fields_ = [
+        ("unit", c_uint16),
+        ("guid", c_uint64),
+    ]
 
 class camera_list_t(Structure):
-     pass
-camera_list_t._fields_ = [
-    ("num", c_uint32),
-    ("ids", POINTER(camera_id_t)),
-]
+    _fields_ = [
+        ("num", c_uint32),
+        ("ids", POINTER(camera_id_t)),
+    ]
 
 class framerates_t(Structure):
-    pass
-framerates_t._fields_ = [
-    ("num", c_uint32),
-    ("framerates", (framerate_t)*FRAMERATE_NUM),
-]
+    _fields_ = [
+        ("num", c_uint32),
+        ("framerates", (framerate_t)*FRAMERATE_NUM),
+    ]
+
 class feature_modes_t(Structure):
-     pass
-feature_modes_t._fields_ = [
-    ("num", c_uint32),
-    ("modes", (feature_mode_t)*FEATURE_MODE_NUM),
-]
+    _fields_ = [
+        ("num", c_uint32),
+        ("modes", (feature_mode_t)*FEATURE_MODE_NUM),
+    ]
 
 class trigger_modes_t(Structure):
-     pass
-trigger_modes_t._fields_ = [
-    ("num", c_uint32),
-    ("modes", (trigger_mode_t)*TRIGGER_MODE_NUM),
-]
+    _fields_ = [
+        ("num", c_uint32),
+        ("modes", (trigger_mode_t)*TRIGGER_MODE_NUM),
+    ]
 
 class trigger_sources_t(Structure):
-     pass
-trigger_sources_t._fields_ = [
-    ("num", c_uint32),
-    ("sources", (trigger_source_t)*TRIGGER_SOURCE_NUM),
-]
+    _fields_ = [
+        ("num", c_uint32),
+        ("sources", (trigger_source_t)*TRIGGER_SOURCE_NUM),
+    ]
 
 class feature_info_t(Structure):
-     pass
-feature_info_t._fields_ = [
-    ("id", feature_t),
-    ("available", bool_t),
-    ("absolute_capable", bool_t),
-    ("readout_capable", bool_t),
-    ("on_off_capable", bool_t),
-    ("polarity_capable", bool_t),
-    ("is_on", switch_t),
-    ("current_mode", feature_mode_t),
-    ("modes", feature_modes_t),
-    ("trigger_modes", trigger_modes_t),
-    ("trigger_mode", trigger_mode_t),
-    ("trigger_polarity", trigger_polarity_t),
-    ("trigger_sources", trigger_sources_t),
-    ("trigger_source", trigger_source_t),
-    ("min", c_uint32),
-    ("max", c_uint32),
-    ("value", c_uint32),
-    ("BU_value", c_uint32),
-    ("RV_value", c_uint32),
-    ("B_value", c_uint32),
-    ("R_value", c_uint32),
-    ("G_value", c_uint32),
-    ("target_value", c_uint32),
-    ("abs_control", switch_t),
-    ("abs_value", c_float),
-    ("abs_max", c_float),
-    ("abs_min", c_float),
-]
+    _fields_ = [
+        ("id", feature_t),
+        ("available", bool_t),
+        ("absolute_capable", bool_t),
+        ("readout_capable", bool_t),
+        ("on_off_capable", bool_t),
+        ("polarity_capable", bool_t),
+        ("is_on", switch_t),
+        ("current_mode", feature_mode_t),
+        ("modes", feature_modes_t),
+        ("trigger_modes", trigger_modes_t),
+        ("trigger_mode", trigger_mode_t),
+        ("trigger_polarity", trigger_polarity_t),
+        ("trigger_sources", trigger_sources_t),
+        ("trigger_source", trigger_source_t),
+        ("min", c_uint32),
+        ("max", c_uint32),
+        ("value", c_uint32),
+        ("BU_value", c_uint32),
+        ("RV_value", c_uint32),
+        ("B_value", c_uint32),
+        ("R_value", c_uint32),
+        ("G_value", c_uint32),
+        ("target_value", c_uint32),
+        ("abs_control", switch_t),
+        ("abs_value", c_float),
+        ("abs_max", c_float),
+        ("abs_min", c_float),
+    ]
 
 class featureset_t(Structure):
-     pass
-featureset_t._fields_ = [
-    ("feature", (feature_info_t)*FEATURE_NUM),
-]
+    _fields_ = [
+        ("feature", (feature_info_t)*FEATURE_NUM),
+    ]
 
 class video_frame_t(Structure):
-     pass
-video_frame_t._fields_ = [
-    ("image", c_void_p), 
-    ("size", (c_uint32)*2),
-    ("position", (c_uint32)*2),
-    ("color_coding", color_coding_t),
-    ("color_filter", color_filter_t),
-    ("yuv_byte_order", c_uint32),
-    ("data_depth", c_uint32),
-    ("stride", c_uint32),
-    ("video_mode", video_mode_t),
-    ("total_bytes", c_uint64), #the buffer + the unused part
-    ("image_bytes", c_uint32), #the length of the image buffer in bytes
-    ("padding_bytes", c_uint32),
-    ("packet_size", c_uint32),
-    ("packets_per_frame", c_uint32),
-    ("timestamp", c_uint64),
-    ("frames_behind", c_uint32),
-    ("camera", POINTER(camera_t)),
-    ("id", c_uint32),
-    ("allocated_image_bytes", c_uint64),
-    ("little_endian", bool_t),
-    ("data_in_padding", bool_t),
-]
+    _fields_ = [
+        ("image", c_void_p), 
+        ("size", (c_uint32)*2),
+        ("position", (c_uint32)*2),
+        ("color_coding", color_coding_t),
+        ("color_filter", color_filter_t),
+        ("yuv_byte_order", c_uint32),
+        ("data_depth", c_uint32),
+        ("stride", c_uint32),
+        ("video_mode", video_mode_t),
+        ("total_bytes", c_uint64), #the buffer + the unused part
+        ("image_bytes", c_uint32), #the length of the image buffer in bytes
+        ("padding_bytes", c_uint32),
+        ("packet_size", c_uint32),
+        ("packets_per_frame", c_uint32),
+        ("timestamp", c_uint64),
+        ("frames_behind", c_uint32),
+        ("camera", POINTER(camera_t)),
+        ("id", c_uint32),
+        ("allocated_image_bytes", c_uint64),
+        ("little_endian", bool_t),
+        ("data_in_padding", bool_t),
+    ]
 
 class format7mode_t(Structure):
-    pass
-format7mode_t._fields_ = [
+    _fields_ = [
         ("present", bool_t ),
         ("size_x", c_uint32),
         ("size_y", c_uint32),
@@ -617,14 +600,13 @@ format7mode_t._fields_ = [
         ("max_packet_size", c_uint32),
         ("total_bytes", c_uint64),
         ("color_filter", color_filter_t),
-        ]
+    ]
 #end of class format7mode_t
 
 class format7modeset_t(Structure):
-    pass
-format7modeset_t._fields_=[
+    _fields_ = [
         ("mode", format7mode_t * VIDEO_MODE_FORMAT7_NUM),
-        ]
+    ]
 #end of class format7modeset_t
 
 #End structures....
@@ -639,6 +621,15 @@ USE_RECOMMENDED  = -3
 ###########################################################################
 #                            PYTHON FUNCTIONS                             #
 ###########################################################################
+
+class DC1394Error(Exception):
+    function = None
+    arguments = None
+    errval = None
+    def __str__(self):
+        return "DC1394Error: %s%s -> %s/%s" % (self.function.__name__,
+                self.arguments, self.errval, error_vals[self.errval])
+
 # Global Error checking functions
 def _errcheck( rtype, func, arg ):
     """This function checks for the errortypes declared by the error_t above.
@@ -646,7 +637,11 @@ def _errcheck( rtype, func, arg ):
         messages from the library.
     """
     if rtype != 0:
-        raise RuntimeError, "Error in dc1394 function call: %s" %error_vals[rtype]
+        e = DC1394Error()
+        e.function = func
+        e.arguments = arg
+        e.errval = rtype
+        raise e
     return rtype
 
 
