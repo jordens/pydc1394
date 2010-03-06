@@ -28,7 +28,8 @@ class DC1394Library(object):
 
     h:				a handler of the library, many functions require it
 
-    cameralist:		a list of dicts. Each camera has a dict, containing:
+    enumerate_cameras():
+            a list of dicts. Each camera has a dict, containing:
             "unit":		the unit ID of the camera
             "guid":		GUID -> requested for the camera allocation
             "vendor":	vendor name
@@ -36,14 +37,12 @@ class DC1394Library(object):
                         Using this list the user may identify the camera and
                         pass cameralist[i]['guid'] to the Camera class below.
 
-        close():	frees up the library
-        enumerate_cameras():	reinitializes the camera list
+    close():	frees up the library
     """
     def __init__( self ):
         # we cache the dll, so it gets not deleted before we cleanup
         self._dll = _dll 
         self._h = _dll.dc1394_new()
-        self.cameralist = self.enumerate_cameras()
     #end of __init__
 
     def __del__(self):
@@ -63,7 +62,6 @@ class DC1394Library(object):
         if self._h is not None:
             self._dll.dc1394_free( self._h )
         self._h = None
-        self.cameralist = []
     #end of close
 
     def enumerate_cameras( self ):
@@ -71,13 +69,11 @@ class DC1394Library(object):
         Enumerate the cameras currently attached to the bus. 
         
         returns a list of {'guid','vendor','model'}
-
         """
         l = POINTER(camera_list_t)()
         
         _dll.dc1394_camera_enumerate(self.h, byref(l))
 
-        #cams -> clist renamed for using cam as a camera
         clist = []
         for i in xrange(l.contents.num):
             ids = l.contents.ids[i]
@@ -163,10 +159,8 @@ class _CamAcquisitonThread(Thread):
 
         self._cam = cam
         self._should_abort = False
-
         self._last_frame = None
         self._condition = condition
-
         #create a lock object from the threading module; see LockType.__doc__
         self._abortLock = Lock()
 
@@ -182,7 +176,7 @@ class _CamAcquisitonThread(Thread):
         Core function which contains the acquisition loop
         """
 
-        while 1:
+        while True:
             self._abortLock.acquire()
             sa = self._should_abort
             self._abortLock.release()
