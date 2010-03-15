@@ -86,8 +86,15 @@ log_vals={
         769 : 'LOG_WARNING',
         770 : 'LOG_DEBUG',
         }
-
 log_codes = invert_dict( log_vals )
+
+log_vals_short={
+        768 : 'ERROR',
+        769 : 'WARNING',
+        770 : 'DEBUG',
+        }
+log_codes_short = invert_dict( log_vals_short )
+
 log_t = c_int
 LOG_MIN = min(log_vals.keys())
 LOG_MAX = max( log_vals.keys())
@@ -110,7 +117,40 @@ iidc_version_vals = {
 }
 iidc_version_codes = invert_dict( iidc_version_vals )
 
+iidc_version_vals_short = {
+      544: '1_04',
+      545: '1_20',
+      546: 'PTGREY',
+      547: '1_30',
+      548: '1_31',
+      549: '1_32',
+      550: '1_33',
+      551: '1_34',
+      552: '1_35',
+      553: '1_36',
+      554: '1_37',
+      555: '1_38',
+      556: '1_39',
+}
+iidc_version_codes_short = invert_dict( iidc_version_vals_short )
+
 iidc_version_t = c_int
+
+operation_mode_vals = {
+        480: "OPERATION_MODE_LEGACY",
+        481: "OPERATION_MODE_1394B",
+}
+operation_mode_codes = invert_dict( iidc_version_vals )
+
+operation_mode_vals_short = {
+        480: "LEGACY",
+        481: "1394B",
+}
+
+operation_mode_codes_short = invert_dict( iidc_version_vals_short )
+
+operation_mode_t = c_int
+
 #VIDEO_MODE:
 #Now this is complicated, because by standard the resolution is the first
 #then the video mode.
@@ -193,6 +233,7 @@ video_mode_details = {
        94: (0, 0, 'FORMAT7_6'),
        95: (0, 0, 'FORMAT7_7'),
 }
+video_mode_details_codes = invert_dict( video_mode_details )
 
 
 # Color codings
@@ -245,6 +286,12 @@ byte_order_vals = {
 }
 byte_order_codes = invert_dict( byte_order_vals )
 
+byte_order_vals_short = {
+      800: 'UYVY',
+      801: 'YUYV',
+}
+byte_order_codes_short = invert_dict( byte_order_vals_short )
+
 byte_order_t = c_int
 BYTE_ORDER_MIN =  min(byte_order_vals.keys())
 BYTE_ORDER_MAX =  max(byte_order_vals.keys())
@@ -264,6 +311,17 @@ bayer_method_vals = {
         7 : 'BAYER_METHOD_AHD'}
 bayer_method_codes = invert_dict( bayer_method_vals )
 
+bayer_method_vals_short = {
+        0 : 'NEAREST',
+        1 : 'SIMPLE',
+        2 : 'BILINEAR',
+        3 : 'HQLINEAR',
+        4 : 'DOWNSAMPLE',
+        5 : 'EDGESENSE',
+        6 : 'VNG',
+        7 : 'AHD'}
+bayer_method_codes_short = invert_dict( bayer_method_vals_short )
+
 bayer_method_t = c_int
 BAYER_METHOD_MIN = min( bayer_method_vals.keys() )
 BAYER_METHOD_MAX = max( bayer_method_vals.keys() )
@@ -276,6 +334,11 @@ stereo_method_vals = {
         0 : 'STEREO_METHOD_INTERLACED',
         1 : 'STEREO_METHOD_FIELD' }
 stereo_method_codes = invert_dict( stereo_method_vals )
+
+stereo_method_vals_short = {
+        0 : 'INTERLACED',
+        1 : 'FIELD' }
+stereo_method_codes_short = invert_dict( stereo_method_vals_short )
 
 stereo_method_t = c_int
 
@@ -297,6 +360,18 @@ trigger_mode_vals = {
       391: 'TRIGGER_MODE_15',
 }
 trigger_mode_codes = invert_dict( trigger_mode_vals )
+
+trigger_mode_vals_short = {
+      384: '0',
+      385: '1',
+      386: '2',
+      387: '3',
+      388: '4',
+      389: '5',
+      390: '14',
+      391: '15',
+}
+trigger_mode_codes_short = invert_dict( trigger_mode_vals_short )
 
 trigger_mode_t = c_int
 TRIGGER_MODE_MIN = min(trigger_mode_vals.keys())
@@ -378,6 +453,16 @@ trigger_source_vals = {
       580: 'TRIGGER_SOURCE_SOFTWARE',
 }
 trigger_source_codes = invert_dict( trigger_source_vals )
+
+trigger_source_vals_short = {
+      576: '0',
+      577: '1',
+      578: '2',
+      579: '3',
+      580: 'SOFTWARE',
+}
+trigger_source_codes_short = invert_dict( trigger_source_vals_short )
+
 trigger_source_t = c_int
 TRIGGER_SOURCE_MIN = min( trigger_source_vals.keys())
 TRIGGER_SOURCE_MAX = max( trigger_source_vals.keys())
@@ -397,6 +482,12 @@ trigger_polarity_vals = {
 #}
 trigger_polarity_codes = invert_dict( trigger_polarity_vals )
 
+trigger_polarity_vals_short = {
+      704: 'ACTIVE_LOW',
+      705: 'ACTIVE_HIGH',
+}
+trigger_polarity_codes_short = invert_dict( trigger_polarity_vals_short )
+
 trigger_polarity_t = c_int
 TRIGGER_ACTIVE_MIN = min( trigger_polarity_vals.keys())
 TRIGGER_ACTIVE_MAX = max( trigger_polarity_vals.keys())
@@ -415,13 +506,21 @@ FEATURE_MODE_MIN = min( feature_mode_vals.keys() )
 FEATURE_MODE_MAX = max( feature_mode_vals.keys() )
 FEATURE_MODE_NUM = (FEATURE_MODE_MAX - FEATURE_MODE_MIN + 1)
 
-capture_flag_codes= {\
-        "CAPTURE_FLAGS_CHANNEL_ALLOC" : 0x00000001,\
-        "CAPTURE_FLAGS_BANDWIDTH_ALLOC" : 0x00000002,\
-        "CAPTURE_FLAGS_DEFAULT" : 0x00000004,\
-        "CAPTURE_FLAGS_AUTO_ISO" : 0x00000008	
+capture_flag_codes = {
+        "CAPTURE_FLAGS_CHANNEL_ALLOC":      0x00000001,
+        "CAPTURE_FLAGS_BANDWIDTH_ALLOC":    0x00000002,
+        "CAPTURE_FLAGS_DEFAULT":            0x00000004,
+        "CAPTURE_FLAGS_AUTO_ISO":           0x00000008,
 }
 capture_flag_vals = invert_dict( capture_flag_codes )
+
+capture_flag_codes_short = {
+        "CHANNEL_ALLOC":    0x1,
+        "BANDWIDTH_ALLOC":  0x2,
+        "DEFAULT":          0x4,
+        "AUTO_ISO":         0x8,
+}
+capture_flag_vals_short = invert_dict( capture_flag_codes_short )
 
 ###########################################################################
 #                               STRUCTURES                                #
@@ -621,6 +720,9 @@ USE_RECOMMENDED  = -3
 ###########################################################################
 #                            PYTHON FUNCTIONS                             #
 ###########################################################################
+
+class DC1394Exception(Exception):
+    pass
 
 class DC1394Error(Exception):
     function = None
@@ -1474,9 +1576,10 @@ _dll.dc1394_format7_set_roi.errcheck = _errcheck
 
 
 _dll.dc1394_format7_get_roi.restype = error_t
-_dll.dc1394_format7_get_roi.argtypes = [ POINTER(camera_t), video_mode_t, color_coding_t,\
-                                        POINTER(c_int32), POINTER(c_int32), POINTER(c_int32),\
-                                        POINTER(c_int32), POINTER(c_int32) ]
+_dll.dc1394_format7_get_roi.argtypes = [ POINTER(camera_t), video_mode_t,
+        POINTER(color_coding_t), POINTER(c_int32),
+        POINTER(c_int32), POINTER(c_int32),
+        POINTER(c_int32), POINTER(c_int32) ]
 _dll.dc1394_format7_get_roi.errcheck = _errcheck
 
 
