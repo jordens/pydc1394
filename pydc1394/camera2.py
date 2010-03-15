@@ -71,7 +71,7 @@ class Image(ndarray):
         end = frame.contents.little_endian and "<" or ">"
         dt = "%su%i" % (end, frame.contents.image_bytes/pixs)
         img = frombuffer(buf, dtype=dt)
-        img = img.reshape(frame.contents.size).copy().view(cls)
+        img = img.reshape(frame.contents.size[::-1]).copy().view(cls)
         img._id = frame.contents.id
         img._frames_behind = frame.contents.frames_behind
         img._position = frame.contents.position
@@ -247,7 +247,7 @@ class Feature(object):
                 self._cam, self._id, byref(min), byref(max))
         return (min.value,max.value)
 
-    def setup(self, value, active=True, mode="manual", absolute=True,
+    def setup(self, value=None, active=True, mode="manual", absolute=True,
             **kwargs):
         self.active = active
         if not active:
@@ -290,7 +290,7 @@ class Trigger(Feature):
                 self._cam, byref(finfo))
         modes = finfo.trigger_modes
         return [trigger_mode_vals_short[i]
-                for i in mode.modes[:modes.num]]
+                for i in modes.modes[:modes.num]]
 
     @property
     def mode(self):
@@ -436,6 +436,21 @@ class Mode(object):
         return [framerate_vals[i]
                 for i in fpss.framerates[:fpss.num]]
 
+    @property
+    def image_size(self):
+        w = c_uint32()
+        h = c_uint32()
+        _dll.dc1394_get_image_size_from_video_mode(
+                self._cam, self._id, byref(w), byref(h))
+        return w.value, h.value
+
+    @property
+    def color_coding(self):
+        cc = color_coding_t()
+        _dll.dc1394_get_color_coding_from_video_mode(
+                self._cam, self._id, byref(cc))
+        return color_coding_vals[cc.value]
+
 
 class Exif(Mode):
     pass
@@ -545,7 +560,55 @@ class Format7(Mode):
             self._cam, self._id, color_coding_codes[color],
             bpp, position[0], position[1], size[0], size[1])
 
-    def setup(self, size, offset=(0,0), color="Y8", bpp=USE_MAX_AVAIL):
+    @property
+    def recommended_byte_per_packet(self):
+        bpp = c_uint32()
+        _dll.dc1394_format7_get_recommended_byte_per_packet(
+            self._cam, self._id, byref(bpp))
+        return bpp.value
+
+    @property
+    def packet_para(self):
+        bpp_min = c_uint32()
+        bpp_max = c_uint32()
+        _dll.dc1394_format7_get_packet_para(
+            self._cam, self._id, byref(bpp_min), byref(bpp_max))
+        return bpp_min.value, bpp_max.value
+
+    @property
+    def byte_per_packet(self):
+        bpp = c_uint32()
+        _dll.dc1394_format7_get_byte_per_packet(
+            self._cam, self._id, byref(bpp))
+        return bpp.value
+
+    @byte_per_packet.setter
+    def byte_per_packet(self, bpp):
+        _dll.dc1394_format7_set_byte_per_packet(
+            self._cam, self._id, int(bpp))
+
+    @property
+    def packet_per_frame(self):
+        ppf = c_uint32()
+        _dll.dc1394_format7_get_packet_per_frame(
+            self._cam, self._id, byref(ppf))
+        return ppf.value
+
+    @property
+    def data_depth(self):
+        dd = c_uint32()
+        _dll.dc1394_format7_get_data_depth(
+            self._cam, self._id, byref(dd))
+        return dd.value
+
+    @property
+    def pixel_number(self):
+        px = c_uint32()
+        _dll.dc1394_format7_get_pixel_number(
+            self._cam, self._id, byref(px))
+        return px.value
+
+    def setup(self, size, offset=(0,0), color="Y8", bpp=USE_RECOMMENDED):
         wu, hu = self.unit_size
         xu, yu = self.unit_position
         position = xu*int(offset[0]/xu), yu*int(offset[1]/yu)
@@ -637,6 +700,21 @@ class Camera(object):
 
     def reset_bus(self):
         _dll.dc1394_reset_bus(self._cam)
+
+    def reset_camera(self):
+        _dll.dc1394_camera_reset(self._cam)
+
+    def memory_save(self, channel):
+        _dll.dc1394_memory_save(self._cam, int(channel))
+
+    def memory_load(self, channel):
+        _dll.dc1394_memory_load(self._cam, int(channel))
+
+    @property
+    def memory_busy(self):
+        v = bool_t()
+        _dll.dc1394_memory_busy(self._cam, byref(v))
+        return bool(v.value)
 
     def flush(self):
         frame = POINTER(video_frame_t)()
@@ -777,6 +855,12 @@ class Camera(object):
         _dll.dc1394_video_get_framerate(self._cam, byref(ft))
         return framerate_vals[ft.value]
 
+    @property
+    def rate_as_float(self):
+        ft = c_float()
+        _dll.dc1394_video_get_framerate_as_float(self._cam, byref(ft))
+        return ft.value
+
     @rate.setter
     def rate(self, framerate):
         wanted_frate = framerate_codes[framerate]
@@ -805,3 +889,10 @@ class Camera(object):
         k = operation_mode_codes_short[value]
         _dll.dc1394_video_set_operation_mode(self._cam, k)
 
+    def get_strobe(self, offset):
+        k = c_uint32()
+        _dll.dc1394_get_strobe_register(self._cam, offset, byref(k))
+        return k.value
+
+    def set_strobe(self, offset, value):
+        _dll.dc1394_set_strobe_register(self._cam, offset, value)
