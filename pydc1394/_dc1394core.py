@@ -30,46 +30,46 @@ def invert_dict( to_invert ):
 
 #All error values to be interpreted:
 error_vals = {
-        0: 'SUCCESS', 
-       -1: 'FAILURE', 
-       -2: 'NOT_A_CAMERA', 
-       -3: 'FUNCTION_NOT_SUPPORTED', 
-       -4: 'CAMERA_NOT_INITIALIZED', 
-       -5: 'MEMORY_ALLOCATION_FAILURE', 
-       -6: 'TAGGED_REGISTER_NOT_FOUND', 
-       -7: 'NO_ISO_CHANNEL', 
-       -8: 'NO_BANDWIDTH', 
-       -9: 'IOCTL_FAILURE', 
-      -10: 'CAPTURE_IS_NOT_SET', 
-      -11: 'CAPTURE_IS_RUNNING', 
-      -12: 'RAW1394_FAILURE', 
-      -13: 'FORMAT7_ERROR_FLAG_1', 
-      -14: 'FORMAT7_ERROR_FLAG_2', 
-      -15: 'INVALID_ARGUMENT_VALUE', 
-      -16: 'REQ_VALUE_OUTSIDE_RANGE', 
-      -17: 'INVALID_FEATURE', 
-      -18: 'INVALID_VIDEO_FORMAT', 
-      -19: 'INVALID_VIDEO_MODE', 
-      -20: 'INVALID_FRAMERATE', 
-      -21: 'INVALID_TRIGGER_MODE', 
-      -22: 'INVALID_TRIGGER_SOURCE', 
-      -23: 'INVALID_ISO_SPEED', 
-      -24: 'INVALID_IIDC_VERSION', 
-      -25: 'INVALID_COLOR_CODING', 
-      -26: 'INVALID_COLOR_FILTER', 
-      -27: 'INVALID_CAPTURE_POLICY', 
-      -28: 'INVALID_ERROR_CODE', 
-      -29: 'INVALID_BAYER_METHOD', 
-      -30: 'INVALID_VIDEO1394_DEVICE', 
-      -31: 'INVALID_OPERATION_MODE', 
-      -32: 'INVALID_TRIGGER_POLARITY', 
-      -33: 'INVALID_FEATURE_MODE', 
-      -34: 'INVALID_LOG_TYPE', 
-      -35: 'INVALID_BYTE_ORDER', 
-      -36: 'INVALID_STEREO_METHOD', 
-      -37: 'BASLER_NO_MORE_SFF_CHUNKS', 
-      -38: 'BASLER_CORRUPTED_SFF_CHUNK', 
-      -39: 'BASLER_UNKNOWN_SFF_CHUNK', 
+        0: 'SUCCESS',
+       -1: 'FAILURE',
+       -2: 'NOT_A_CAMERA',
+       -3: 'FUNCTION_NOT_SUPPORTED',
+       -4: 'CAMERA_NOT_INITIALIZED',
+       -5: 'MEMORY_ALLOCATION_FAILURE',
+       -6: 'TAGGED_REGISTER_NOT_FOUND',
+       -7: 'NO_ISO_CHANNEL',
+       -8: 'NO_BANDWIDTH',
+       -9: 'IOCTL_FAILURE',
+      -10: 'CAPTURE_IS_NOT_SET',
+      -11: 'CAPTURE_IS_RUNNING',
+      -12: 'RAW1394_FAILURE',
+      -13: 'FORMAT7_ERROR_FLAG_1',
+      -14: 'FORMAT7_ERROR_FLAG_2',
+      -15: 'INVALID_ARGUMENT_VALUE',
+      -16: 'REQ_VALUE_OUTSIDE_RANGE',
+      -17: 'INVALID_FEATURE',
+      -18: 'INVALID_VIDEO_FORMAT',
+      -19: 'INVALID_VIDEO_MODE',
+      -20: 'INVALID_FRAMERATE',
+      -21: 'INVALID_TRIGGER_MODE',
+      -22: 'INVALID_TRIGGER_SOURCE',
+      -23: 'INVALID_ISO_SPEED',
+      -24: 'INVALID_IIDC_VERSION',
+      -25: 'INVALID_COLOR_CODING',
+      -26: 'INVALID_COLOR_FILTER',
+      -27: 'INVALID_CAPTURE_POLICY',
+      -28: 'INVALID_ERROR_CODE',
+      -29: 'INVALID_BAYER_METHOD',
+      -30: 'INVALID_VIDEO1394_DEVICE',
+      -31: 'INVALID_OPERATION_MODE',
+      -32: 'INVALID_TRIGGER_POLARITY',
+      -33: 'INVALID_FEATURE_MODE',
+      -34: 'INVALID_LOG_TYPE',
+      -35: 'INVALID_BYTE_ORDER',
+      -36: 'INVALID_STEREO_METHOD',
+      -37: 'BASLER_NO_MORE_SFF_CHUNKS',
+      -38: 'BASLER_CORRUPTED_SFF_CHUNK',
+      -39: 'BASLER_UNKNOWN_SFF_CHUNK',
 }
 
 #All error codes to be asked back:
@@ -327,7 +327,7 @@ BAYER_METHOD_MIN = min( bayer_method_vals.keys() )
 BAYER_METHOD_MAX = max( bayer_method_vals.keys() )
 BAYER_METHOD_NUM = BAYER_METHOD_MAX - BAYER_METHOD_MIN
 
-#A list of known stereo-in-normal-video modes used by manufacturers like Point 
+#A list of known stereo-in-normal-video modes used by manufacturers like Point
 # Grey Research and Videre Design.
 
 stereo_method_vals = {
@@ -344,7 +344,7 @@ stereo_method_t = c_int
 
 STEREO_METHOD_MIN = min( stereo_method_vals.keys())
 STEREO_METHOD_MAX = max( stereo_method_vals.keys())
-STEREO_METHOD_NUM = STEREO_METHOD_MAX - STEREO_METHOD_MIN 
+STEREO_METHOD_NUM = STEREO_METHOD_MAX - STEREO_METHOD_MIN
 
 #############################################################################
 #
@@ -380,14 +380,14 @@ TRIGGER_MODE_NUM =(TRIGGER_MODE_MAX - TRIGGER_MODE_MIN + 1)
 
 #FRAMERATE
 framerate_vals = {
-       32: 1.875, 
-       33: 3.75, 
-       34: 7.5, 
-       35: 15., 
-       36: 30, 
-       37: 60., 
-       38: 120., 
-       39: 240., 
+       32: 1.875,
+       33: 3.75,
+       34: 7.5,
+       35: 15.,
+       36: 30,
+       37: 60.,
+       38: 120.,
+       39: 240.,
 }
 framerate_codes = invert_dict( framerate_vals )
 
@@ -399,17 +399,17 @@ FRAMERATE_NUM =(FRAMERATE_MAX - FRAMERATE_MIN + 1)
 
 #ISO_SPEED
 speed_vals = {
-        0: 100, 
-        1: 200, 
-        2: 400, 
-        3: 800, 
-        4: 1600, 
-        5: 3200, 
+        0: 100,
+        1: 200,
+        2: 400,
+        3: 800,
+        4: 1600,
+        5: 3200,
 }
 speed_codes = invert_dict( speed_vals )
 speed_t = c_int
-ISO_SPEED_MIN = min( speed_vals.keys()) 
-ISO_SPEED_MAX = max( speed_vals.keys()) 
+ISO_SPEED_MIN = min( speed_vals.keys())
+ISO_SPEED_MAX = max( speed_vals.keys())
 ISO_SPEED_NUM = (ISO_SPEED_MAX - ISO_SPEED_MIN + 1)
 
 #FEATURE:
@@ -440,8 +440,8 @@ feature_vals = {
 
 feature_codes = invert_dict( feature_vals )
 feature_t = c_int
-FEATURE_MIN = min( feature_vals.keys()) 
-FEATURE_MAX = max( feature_vals.keys()) 
+FEATURE_MIN = min( feature_vals.keys())
+FEATURE_MAX = max( feature_vals.keys())
 FEATURE_NUM = (FEATURE_MAX - FEATURE_MIN + 1)
 
 #TRIGGER_SOURCE
@@ -753,7 +753,7 @@ def _errcheck( rtype, func, arg ):
 #Reminder:
 # By default the ctypes API does not know or care about how a dll funciton
 # should be called. This may lead a lot of crashes and memory corruption.
-# I think it is safer to declar all functions here, independent of usage,
+# I think it is safer to declare all functions here, independent of usage,
 # so at least the API can handle the ingoing/returning parameters properly.
 #
 # restypes: the result type of the function
@@ -762,9 +762,9 @@ def _errcheck( rtype, func, arg ):
 #
 # many of the dc1394 functions return an error value, these can be handled
 # by the _errcheck funciton above
-###################################################################################
-# Startup functions: camera.h 
-###################################################################################
+###############################################################################
+# Startup functions: camera.h
+###############################################################################
 #to start the library:
 _dll.dc1394_new.argtypes = None
 _dll.dc1394_new.restype = c_void_p
@@ -786,7 +786,7 @@ _dll.dc1394_camera_get_broadcast.errcheck = _errcheck
 _dll.dc1394_camera_set_broadcast.argtypes = [ c_void_p, bool_t ]
 _dll.dc1394_camera_set_broadcast.errcheck = _errcheck
 
-# Resets the IEEE1394 bus which camera is attached to. 
+# Resets the IEEE1394 bus which camera is attached to.
 # A "rude" function to reset the bus (after a connection hanging
 # due to program crash); it causes other devices using the bus
 # to new enumerate and may disrupt other activities:
@@ -846,12 +846,12 @@ _dll.dc1394_feature_get.errcheck = _errcheck
 
 #Displays the bounds and options of the given feature
 _dll.dc1394_feature_print.argtypes = [POINTER(feature_info_t), c_void_p]
-_dll.dc1394_feature_print.restype = error_t 
+_dll.dc1394_feature_print.restype = error_t
 _dll.dc1394_feature_print.errcheck = _errcheck
 
 # Displays the bounds and options of every feature supported by the camera
 _dll.dc1394_feature_print_all.argtypes = [ POINTER(featureset_t), c_void_p ]
-_dll.dc1394_feature_print_all.restype = error_t 
+_dll.dc1394_feature_print_all.restype = error_t
 _dll.dc1394_feature_print_all.errcheck = _errcheck
 
 #white balance: get/set
@@ -892,22 +892,22 @@ _dll.dc1394_feature_set_value.errcheck = _errcheck
 
 #Tells whether a feature is present or not
 _dll.dc1394_feature_is_present.argtypes = [POINTER( camera_t ),feature_t, POINTER(bool_t) ]
-_dll.dc1394_feature_is_present.restype = error_t  
+_dll.dc1394_feature_is_present.restype = error_t
 _dll.dc1394_feature_is_present.errcheck = _errcheck
 
 #Tells whether a feature is readable or not
 _dll.dc1394_feature_is_readable.argtypes = [ POINTER(camera_t),feature_t, POINTER(bool_t) ]
-_dll.dc1394_feature_is_readable.restype = error_t 
+_dll.dc1394_feature_is_readable.restype = error_t
 _dll.dc1394_feature_is_readable.errcheck = _errcheck
 
 #Gets the boundaries of a feature
 _dll.dc1394_feature_get_boundaries.argtypes= [ POINTER(camera_t),feature_t, POINTER(c_uint32), POINTER(c_uint32)]
-_dll.dc1394_feature_get_boundaries.restype = error_t  
+_dll.dc1394_feature_get_boundaries.restype = error_t
 _dll.dc1394_feature_get_boundaries.errcheck = _errcheck
 
 #Tells whether a feature is switcheable or not (ON/OFF)
 _dll.dc1394_feature_is_switchable.argtypes = [POINTER(camera_t),feature_t, POINTER(bool_t)]
-_dll.dc1394_feature_is_switchable.restype = error_t 
+_dll.dc1394_feature_is_switchable.restype = error_t
 _dll.dc1394_feature_is_switchable.errcheck = _errcheck
 
 #Set/Get power:
@@ -967,17 +967,17 @@ _dll.dc1394_feature_set_mode.errcheck = _errcheck
 
 #Sets the polarity of the external trigger
 _dll.dc1394_external_trigger_set_polarity.argtypes = [ POINTER(camera_t), trigger_polarity_t ]
-_dll.dc1394_external_trigger_set_polarity.restype = error_t 
+_dll.dc1394_external_trigger_set_polarity.restype = error_t
 _dll.dc1394_external_trigger_set_polarity.errcheck = _errcheck
 
 #Gets the polarity of the external trigger
 _dll.dc1394_external_trigger_get_polarity.argtypes = [ POINTER(camera_t), POINTER(trigger_polarity_t) ]
-_dll.dc1394_external_trigger_get_polarity.restype = error_t 
+_dll.dc1394_external_trigger_get_polarity.restype = error_t
 _dll.dc1394_external_trigger_get_polarity.errcheck = _errcheck
 
 #Tells whether the external trigger can change its polarity or not
 _dll.dc1394_external_trigger_has_polarity.argtypes = [ POINTER(camera_t), POINTER(bool_t)]
-_dll.dc1394_external_trigger_has_polarity.restype = error_t  
+_dll.dc1394_external_trigger_has_polarity.restype = error_t
 _dll.dc1394_external_trigger_has_polarity.errcheck = _errcheck
 
 #Switch between internal and external trigger
@@ -986,12 +986,12 @@ _dll.dc1394_external_trigger_set_power.restype = error_t
 _dll.dc1394_external_trigger_set_power.errcheck = _errcheck
 
 #Gets the status of the external trigger
-_dll.dc1394_external_trigger_get_power.restype = error_t 
+_dll.dc1394_external_trigger_get_power.restype = error_t
 _dll.dc1394_external_trigger_get_power.argtypes = [ POINTER(camera_t), POINTER(switch_t)]
 _dll.dc1394_external_trigger_get_power.errcheck = _errcheck
 
 # Sets the external trigger mode
-_dll.dc1394_external_trigger_set_mode.restype = error_t 
+_dll.dc1394_external_trigger_set_mode.restype = error_t
 _dll.dc1394_external_trigger_set_mode.argtypes = [POINTER(camera_t), trigger_mode_t]
 _dll.dc1394_external_trigger_set_mode.errcheck = _errcheck
 
@@ -1006,50 +1006,50 @@ _dll.dc1394_external_trigger_set_source.argtypes = [POINTER(camera_t), trigger_s
 _dll.dc1394_external_trigger_set_source.errcheck = _errcheck
 
 #Gets the external trigger source
-_dll.dc1394_external_trigger_get_source.restype =error_t 
+_dll.dc1394_external_trigger_get_source.restype =error_t
 _dll.dc1394_external_trigger_get_source.argtypes = [POINTER(camera_t),POINTER(trigger_source_t) ]
 _dll.dc1394_external_trigger_get_source.errcheck = _errcheck
 
 #Gets the list of available external trigger source
-_dll.dc1394_external_trigger_get_supported_sources.restype =error_t  
+_dll.dc1394_external_trigger_get_supported_sources.restype =error_t
 _dll.dc1394_external_trigger_get_supported_sources.argtypes = [POINTER(camera_t),POINTER(trigger_sources_t) ]
 _dll.dc1394_external_trigger_get_supported_sources.errcheck = _errcheck
 
 #Turn software trigger on or off
-_dll.dc1394_software_trigger_set_power.restype = error_t 
+_dll.dc1394_software_trigger_set_power.restype = error_t
 _dll.dc1394_software_trigger_set_power.argtypes = [POINTER( camera_t ), switch_t]
 _dll.dc1394_software_trigger_set_power.errcheck = _errcheck
 
 #ets the state of software trigger
-_dll.dc1394_software_trigger_get_power.restype = error_t 
+_dll.dc1394_software_trigger_get_power.restype = error_t
 _dll.dc1394_software_trigger_get_power.argtypes = [POINTER(camera_t ), POINTER(switch_t)]
 _dll.dc1394_software_trigger_get_power.errcheck = _errcheck
 
 ##########################################################################################
 # PIO, SIO and Strobe Functions
 # Sends a quadlet on the PIO (output)
-_dll.dc1394_pio_set.restype = error_t 
+_dll.dc1394_pio_set.restype = error_t
 _dll.dc1394_pio_set.argtypes = [POINTER(camera_t ), c_uint32 ]
 _dll.dc1394_pio_set.errcheck = _errcheck
 
 #Gets the current quadlet at the PIO (input)
-_dll.dc1394_pio_get.restype = error_t 
+_dll.dc1394_pio_get.restype = error_t
 _dll.dc1394_pio_get.argtypes = [POINTER( camera_t),POINTER(c_uint32 )]
 _dll.dc1394_pio_get.errcheck = _errcheck
 
 #Other functionalities
 #reset a camera to factory default settings
-_dll.dc1394_camera_reset.restype = error_t 
+_dll.dc1394_camera_reset.restype = error_t
 _dll.dc1394_camera_reset.argtypes = [POINTER(camera_t) ]
 _dll.dc1394_camera_reset.errcheck = _errcheck
 
 #turn a camera on or off
-_dll.dc1394_camera_set_power.restype = error_t 
+_dll.dc1394_camera_set_power.restype = error_t
 _dll.dc1394_camera_set_power.argtypes = [POINTER(camera_t ), switch_t ]
 _dll.dc1394_camera_set_power.errcheck = _errcheck
 
 #Download a camera setup from the memory
-_dll.dc1394_memory_busy.restype = error_t 
+_dll.dc1394_memory_busy.restype = error_t
 _dll.dc1394_memory_busy.argtypes = [POINTER(camera_t), POINTER(bool_t)]
 _dll.dc1394_memory_busy.errcheck = _errcheck
 
@@ -1057,12 +1057,12 @@ _dll.dc1394_memory_busy.errcheck = _errcheck
 #Note that this operation can only be performed a certain number of
 #times for a given camera, as it requires reprogramming of an EEPROM.
 
-_dll.dc1394_memory_save.restype = error_t 
+_dll.dc1394_memory_save.restype = error_t
 _dll.dc1394_memory_save.argtypes = [POINTER(camera_t ), c_uint32 ]
 _dll.dc1394_memory_save.errcheck = _errcheck
 
 #Tells whether the writing of the camera setup in memory is finished or not
-_dll.dc1394_memory_load.restype = error_t  
+_dll.dc1394_memory_load.restype = error_t
 _dll.dc1394_memory_load.argtypes = [POINTER(camera_t), c_uint32 ]
 _dll.dc1394_memory_load.errcheck = _errcheck
 
@@ -1074,29 +1074,29 @@ _dll.dc1394_video_get_supported_modes.argtypes = [ c_void_p, POINTER(video_modes
 _dll.dc1394_video_get_supported_modes.restype = error_t
 _dll.dc1394_video_get_supported_modes.errcheck = _errcheck
 
-#ets a list of supported video framerates for a given video mode. 
+#ets a list of supported video framerates for a given video mode.
 #This function only works with non-scalable formats
-_dll.dc1394_video_get_supported_framerates.restype = error_t 
+_dll.dc1394_video_get_supported_framerates.restype = error_t
 _dll.dc1394_video_get_supported_framerates.argtypes = [POINTER(camera_t), video_mode_t, POINTER(framerates_t) ]
 _dll.dc1394_video_get_supported_framerates.errcheck = _errcheck
 
 #Gets the current framerate. This is meaningful only if the video mode is not scalable
-_dll.dc1394_video_get_framerate.restype = error_t  
+_dll.dc1394_video_get_framerate.restype = error_t
 _dll.dc1394_video_get_framerate.argtypes = [ POINTER(camera_t), POINTER(framerate_t )]
 _dll.dc1394_video_get_framerate.errcheck = _errcheck
 
 #Sets the current framerate. This is meaningful only if the video mode is not scalable
-_dll.dc1394_video_set_framerate.restype = error_t 
+_dll.dc1394_video_set_framerate.restype = error_t
 _dll.dc1394_video_set_framerate.argtypes = [POINTER(camera_t), framerate_t ]
 _dll.dc1394_video_set_framerate.errcheck = _errcheck
 
 #Gets the current vide mode
-_dll.dc1394_video_get_mode.restype = error_t 
+_dll.dc1394_video_get_mode.restype = error_t
 _dll.dc1394_video_get_mode.argtypes = [ POINTER(camera_t), POINTER(video_mode_t )]
 _dll.dc1394_video_get_mode.errcheck = _errcheck
 
 #Sets the current vide mode
-_dll.dc1394_video_set_mode.restype = error_t 
+_dll.dc1394_video_set_mode.restype = error_t
 _dll.dc1394_video_set_mode.argtypes = [POINTER(camera_t), video_mode_t ]
 _dll.dc1394_video_set_mode.errcheck = _errcheck
 
@@ -1111,27 +1111,27 @@ _dll.dc1394_video_set_operation_mode.argtypes = [ c_void_p, c_int]
 _dll.dc1394_video_set_operation_mode.errcheck = _errcheck
 
 #Gets the current ISO speed
-_dll.dc1394_video_get_iso_speed.restype = error_t 
+_dll.dc1394_video_get_iso_speed.restype = error_t
 _dll.dc1394_video_get_iso_speed.argtypes = [POINTER(camera_t),POINTER( speed_t )]
 _dll.dc1394_video_get_iso_speed.errcheck = _errcheck
 
 #Sets the current ISO speed. Speeds over 400Mbps require 1394B
-_dll.dc1394_video_set_iso_speed.restype = error_t 
+_dll.dc1394_video_set_iso_speed.restype = error_t
 _dll.dc1394_video_set_iso_speed.argtypes = [POINTER(camera_t), speed_t ]
 _dll.dc1394_video_set_iso_speed.errcheck = _errcheck
 
 #Gets the current ISO channel
-_dll.dc1394_video_get_iso_channel.restype = error_t 
+_dll.dc1394_video_get_iso_channel.restype = error_t
 _dll.dc1394_video_get_iso_channel.argtypes = [POINTER(camera_t),POINTER(c_uint32)]
 _dll.dc1394_video_get_iso_channel.errcheck = _errcheck
 
 #Sets the current ISO channel
-_dll.dc1394_video_set_iso_channel.restype = error_t 
+_dll.dc1394_video_set_iso_channel.restype = error_t
 _dll.dc1394_video_set_iso_channel.argtypes = [POINTER(camera_t), c_uint32 ]
 _dll.dc1394_video_set_iso_channel.errcheck = _errcheck
 
 #Gets the current data depth, in bits. Only meaningful for 16bpp video modes (RAW16, RGB48, MONO16,...)
-_dll.dc1394_video_get_data_depth.restype = error_t 
+_dll.dc1394_video_get_data_depth.restype = error_t
 _dll.dc1394_video_get_data_depth.argtypes = [POINTER(camera_t), POINTER(c_uint32) ]
 _dll.dc1394_video_get_data_depth.errcheck = _errcheck
 
@@ -1141,27 +1141,27 @@ _dll.dc1394_video_set_transmission.argtypes = [ c_void_p, c_int ]
 _dll.dc1394_video_set_transmission.errcheck = _errcheck
 
 #Gets the status of the video transmission
-_dll.dc1394_video_get_transmission.restype = error_t 
+_dll.dc1394_video_get_transmission.restype = error_t
 _dll.dc1394_video_get_transmission.argtypes = [POINTER(camera_t), POINTER(switch_t)]
 _dll.dc1394_video_get_transmission.errcheck = _errcheck
 
 #Turns one-shot mode on or off
-_dll.dc1394_video_set_one_shot.restype = error_t 
+_dll.dc1394_video_set_one_shot.restype = error_t
 _dll.dc1394_video_set_one_shot.argtype = [POINTER(camera_t), switch_t]
 _dll.dc1394_video_set_one_shot.errcheck = _errcheck
 
 #Gets the status of the one-shot mode
-_dll.dc1394_video_get_one_shot.restype = error_t 
+_dll.dc1394_video_get_one_shot.restype = error_t
 _dll.dc1394_video_get_one_shot.argtypes = [POINTER(camera_t), POINTER(bool_t)]
 _dll.dc1394_video_get_one_shot.errcheck = _errcheck
 
 #Turns multishot mode on or off
-_dll.dc1394_video_set_multi_shot.restype = error_t 
+_dll.dc1394_video_set_multi_shot.restype = error_t
 _dll.dc1394_video_set_multi_shot.argtypes =[POINTER(camera_t), c_uint32, switch_t]
-_dll.dc1394_video_set_multi_shot.errcheck = _errcheck 
+_dll.dc1394_video_set_multi_shot.errcheck = _errcheck
 
 #Gets the status of the multi-shot mode
-_dll.dc1394_video_get_multi_shot.restype = error_t 
+_dll.dc1394_video_get_multi_shot.restype = error_t
 _dll.dc1394_video_get_multi_shot.argtypes = [POINTER(camera_t), POINTER(bool_t), POINTER(c_uint32)]
 _dll.dc1394_video_get_multi_shot.errcheck = _errcheck
 
@@ -1171,14 +1171,14 @@ _dll.dc1394_video_get_multi_shot.errcheck = _errcheck
 ## available per cycle. Each unit corresponds to the time it takes to send one
 ## quadlet at ISO speed S1600. The bandwidth usage at S400 is thus four times the
 ## number of quadlets per packet. Thanks to Krisitian Hogsberg for clarifying this.
-_dll.dc1394_video_get_bandwidth_usage.restype = error_t 
+_dll.dc1394_video_get_bandwidth_usage.restype = error_t
 _dll.dc1394_video_get_bandwidth_usage.argtypes = [POINTER(camera_t),POINTER(c_uint32)]
 _dll.dc1394_video_get_bandwidth_usage.errcheck = _errcheck
 
 ################################
 # CAPTURE functions, capture.h
 ################################
-#Setup the capture, using a ring buffer of a certain size (num_dma_buffers) and 
+#Setup the capture, using a ring buffer of a certain size (num_dma_buffers) and
 # certain options (flags)
 _dll.dc1394_capture_setup.argtypes = [ POINTER(camera_t), c_uint32, c_uint32 ]
 _dll.dc1394_capture_setup.restype = error_t
@@ -1192,10 +1192,10 @@ _dll.dc1394_capture_stop.errcheck = _errcheck
 #Gets a file descriptor to be used for select(). Must be called after dc1394_capture_setup()
 #Error check can do nothing with this one;
 #we also do not really need this, since we do not want to dump files from the C library.
-_dll.dc1394_capture_get_fileno.restype =  c_int 
+_dll.dc1394_capture_get_fileno.restype =  c_int
 _dll.dc1394_capture_get_fileno.argtypes =[ POINTER(camera_t) ]
 
-#Captures a video frame. The returned struct contains the image buffer, among others. 
+#Captures a video frame. The returned struct contains the image buffer, among others.
 # This image buffer SHALL NOT be freed, as it represents an area
 # in the memory that belongs to the system.
 _dll.dc1394_capture_dequeue.restype = error_t
@@ -1209,10 +1209,10 @@ _dll.dc1394_capture_enqueue.errcheck = _errcheck
 
 #Returns DC1394_TRUE if the given frame (previously dequeued) has been detected to be
 # corrupt (missing data, corrupted data, overrun buffer, etc.). Note that certain types
-# of corruption may go undetected in which case DC1394_FALSE will be returned.  The 
-# ability to detect corruption also varies between platforms.  Note that corrupt frames 
+# of corruption may go undetected in which case DC1394_FALSE will be returned.  The
+# ability to detect corruption also varies between platforms.  Note that corrupt frames
 # still need to be enqueued with dc1394_capture_enqueue() when no longer needed by the user.
-_dll.dc1394_capture_is_frame_corrupt.restype = bool_t 
+_dll.dc1394_capture_is_frame_corrupt.restype = bool_t
 _dll.dc1394_capture_is_frame_corrupt.argtypes = [ POINTER(camera_t), POINTER(video_frame_t) ]
 
 #####################################################################
@@ -1248,7 +1248,7 @@ _dll.dc1394_deinterlace_stereo.errcheck = _errcheck
 
 ##################################################################################################
 # Color conversion functions for cameras that can output raw Bayer pattern images
-# (color codings DC1394_COLOR_CODING_RAW8 and DC1394_COLOR_CODING_RAW16) 
+# (color codings DC1394_COLOR_CODING_RAW8 and DC1394_COLOR_CODING_RAW16)
 #	Credits and sources:
 #		- Nearest Neighbor : OpenCV library
 #		- Bilinear         : OpenCV library
@@ -1258,14 +1258,14 @@ _dll.dc1394_deinterlace_stereo.errcheck = _errcheck
 #		- Edge Sense II    : Laroche, Claude A. "Apparatus and method for adaptively interpolating
 #								a full color image utilizing chrominance gradients"
 #								U.S. Patent 5,373,322. Based on the code found on the website
-#								http://www-ise.stanford.edu/~tingchen/ Converted to C and adapted 
+#								http://www-ise.stanford.edu/~tingchen/ Converted to C and adapted
 #								to all four elementary patterns.
 #		- Downsample       : "Known to the Ancients"
 #		- Simple           : Implemented from the information found in the manual of Allied Vision
 #								Technologies (AVT) cameras.
 #		- VNG              : Variable Number of Gradients, a method described in
-#								http://www-ise.stanford.edu/~tingchen/algodep/vargra.html 
-#								Sources import from DCRAW by Frederic Devernay. DCRAW is a RAW 
+#								http://www-ise.stanford.edu/~tingchen/algodep/vargra.html
+#								Sources import from DCRAW by Frederic Devernay. DCRAW is a RAW
 #								converter program by Dave Coffin. URL:
 #								http://www.cybercom.net/~dcoffin/dcraw/
 #		- AHD              : Adaptive Homogeneity-Directed Demosaicing Algorithm, by K. Hirakawa
@@ -1273,7 +1273,7 @@ _dll.dc1394_deinterlace_stereo.errcheck = _errcheck
 #								Nr. 3, March 2005, pp. 360 - 369.
 ##################################################################################################
 # Perform de-mosaicing on an 8-bit image buffer
-# parameters: uint16_t *bayer, uint16_t *rgb, uint32_t width, uint32_t height, 
+# parameters: uint16_t *bayer, uint16_t *rgb, uint32_t width, uint32_t height,
 # color_filter_t tile, bayer_method_t method
 _dll.dc1394_bayer_decoding_8bit.restype = error_t
 _dll.dc1394_bayer_decoding_8bit.argtypes = [ POINTER(c_uint8), POINTER(c_uint8), c_uint32,\
@@ -1281,7 +1281,7 @@ _dll.dc1394_bayer_decoding_8bit.argtypes = [ POINTER(c_uint8), POINTER(c_uint8),
 _dll.dc1394_bayer_decoding_8bit.errcheck = _errcheck
 
 # Perform de-mosaicing on an 16-bit image buffer
-# parameters: uint16_t *bayer, uint16_t *rgb, uint32_t width, uint32_t height, 
+# parameters: uint16_t *bayer, uint16_t *rgb, uint32_t width, uint32_t height,
 # color_filter_t tile, bayer_method_t method, uint32_t bits
 _dll.dc1394_bayer_decoding_16bit.restype = error_t
 _dll.dc1394_bayer_decoding_16bit.argtypes = [ POINTER(c_uint8), POINTER(c_uint8), c_uint32,\
@@ -1291,7 +1291,7 @@ _dll.dc1394_bayer_decoding_16bit.errcheck = _errcheck
 ##################################################################################################
 #Frame based conversions
 # Converts the format of a video frame.
-# To set the format of the output, simply set the values of the corresponding fields 
+# To set the format of the output, simply set the values of the corresponding fields
 # in the output frame
 # parameters: inframe and outframe
 _dll.dc1394_convert_frames.restype = error_t
@@ -1299,7 +1299,7 @@ _dll.dc1394_convert_frames.argtypes = [ POINTER(video_frame_t), POINTER(video_fr
 _dll.dc1394_convert_frames.errcheck = _errcheck
 
 #De-mosaicing of a Bayer-encoded video frame
-#To set the format of the output, simply set the values of the corresponding fields 
+#To set the format of the output, simply set the values of the corresponding fields
 # in the output frame
 _dll.dc1394_debayer_frames.restype = error_t
 _dll.dc1394_debayer_frames.argtypes = [ POINTER(video_frame_t), POINTER(video_frame_t),\
@@ -1377,7 +1377,7 @@ _dll.dc1394_set_absolute_register.argtypes = [ POINTER(camera_t), c_uint, c_uint
                                             c_uint32]
 _dll.dc1394_set_absolute_register.errcheck = _errcheck
 
-#Get/Set PIO Feature Registers 
+#Get/Set PIO Feature Registers
 #params: &camera, offset, &value
 _dll.dc1394_get_PIO_register.restype = error_t
 _dll.dc1394_get_PIO_register.argtypes = [ POINTER(camera_t), c_uint64,POINTER(c_uint32) ]
@@ -1418,7 +1418,7 @@ _dll. dc1394_format7_get_max_image_size.argtypes = [ POINTER(camera_t), video_mo
 _dll. dc1394_format7_get_max_image_size.errcheck = _errcheck
 
 
-#Gets the unit sizes for a given mode. The image size can only be a multiple 
+#Gets the unit sizes for a given mode. The image size can only be a multiple
 # of the unit size, and cannot be smaller than it.
 #parameters: &camera, video_mode, &h_unit, &v_unit
 _dll.dc1394_format7_get_unit_size.restype = error_t
@@ -1454,7 +1454,7 @@ _dll.dc1394_format7_set_image_position.argtypes = [ POINTER(camera_t), video_mod
                                              c_uint32, c_uint32 ]
 _dll.dc1394_format7_set_image_position.errcheck = _errcheck
 
-#Gets the unit positions for a given mode. The image position can 
+#Gets the unit positions for a given mode. The image position can
 #only be a multiple of the unit position (zero is acceptable).
 #parameters: &camera, video_mode, &h_unit, &v_unit
 _dll.dc1394_format7_get_unit_position.restype = error_t
@@ -1487,7 +1487,7 @@ _dll.dc1394_format7_get_color_filter.argtypes = [ POINTER(camera_t), video_mode_
                                         POINTER(color_filter_t) ]
 _dll.dc1394_format7_get_color_filter.errcheck = _errcheck
 
-#packet 
+#packet
 # Get the parameters of the packet size: its maximal size and its unit size.
 # The packet size is always a multiple of the unit bytes and cannot be zero.
 #parameters: &camera, video_mode, &unit_bytes, &max_bytes
@@ -1544,7 +1544,7 @@ _dll.dc1394_format7_get_pixel_number.argtypes = [ POINTER(camera_t), video_mode_
                                             POINTER( c_uint32 ) ]
 _dll.dc1394_format7_get_pixel_number.errcheck = _errcheck
 
-#Get the total number of bytes per frame. This includes padding 
+#Get the total number of bytes per frame. This includes padding
 #(to reach an entire number of packets)
 #parameters: &camera, video_mode, &total_bytes
 _dll.dc1394_format7_get_total_bytes.restype = error_t
@@ -1566,7 +1566,7 @@ _dll.dc1394_format7_get_mode_info.argtypes = [ POINTER(camera_t), video_mode_t,\
 _dll.dc1394_format7_get_mode_info.errcheck = _errcheck
 
 #Joint function that fully sets a certain ROI taking all parameters into account.
-# Note that this function does not SWITCH to the video mode passed as argument, 
+# Note that this function does not SWITCH to the video mode passed as argument,
 # it mearly sets it
 #parameters: &camera, video_mode, color_coding, packet_size, left, top, width, height
 _dll.dc1394_format7_set_roi.restype = error_t
@@ -1601,7 +1601,7 @@ _dll.dc1394_framerate_as_float.argtypes = [ framerate_t, POINTER(c_float)]
 _dll.dc1394_framerate_as_float.errcheck = _errcheck
 
 #Returns the number of bits per pixel for a certain color coding. This is the size
-# of the data sent on the bus, the effective data depth may vary. Example: RGB16 is 16, 
+# of the data sent on the bus, the effective data depth may vary. Example: RGB16 is 16,
 # YUV411 is 8, YUV422 is 8
 _dll.dc1394_get_color_coding_data_depth.restype = error_t
 _dll.dc1394_get_color_coding_data_depth.argtypes = [ color_coding_t, POINTER(c_uint32)]
@@ -1629,7 +1629,7 @@ _dll.dc1394_is_video_mode_scalable.restype = bool_t
 _dll.dc1394_is_video_mode_scalable.argtypes = [ video_mode_t ]
 
 
-#Tells whether the video mode is "still image" or not ("still image" is 
+#Tells whether the video mode is "still image" or not ("still image" is
 # currently not supported by any cameras on the market)
 _dll.dc1394_is_video_mode_still_image.restype = bool_t
 _dll.dc1394_is_video_mode_still_image.argtypes = [ video_mode_t ]
@@ -1659,9 +1659,9 @@ _dll.dc1394_checksum_crc16.argtypes = [ POINTER(c_uint8), c_uint32 ]
 #dc1394_iso_set_persist
 #param camera A camera handle.
 # Calling this function will cause isochronous channel and bandwidth allocations to persist
-# beyond the lifetime of this dc1394camera_t instance.  Normally (when this function is not 
-# called), any allocations would be automatically released upon freeing this camera or a 
-# premature shutdown of the application (if possible).  For this function to be used, it 
+# beyond the lifetime of this dc1394camera_t instance.  Normally (when this function is not
+# called), any allocations would be automatically released upon freeing this camera or a
+# premature shutdown of the application (if possible).  For this function to be used, it
 # must be called prior to any allocations or an error will be returned.
 _dll.dc1394_iso_set_persist.restype = error_t
 _dll.dc1394_iso_set_persist.argtypes = [ POINTER( camera_t) ]
@@ -1670,14 +1670,14 @@ _dll.dc1394_iso_set_persist.errcheck = _errcheck
 #dc1394_iso_allocate_channel:
 #param &camera , channels_allowed, &channel
 #channels_allowed: A bitmask of acceptable channels for the allocation. The LSB corresponds
-# to channel 0 and the MSB corresponds to channe 63.  Only channels whose bit is set will 
-# be considered for the allocation If \a channels_allowed = 0, the complete set of channels 
-# supported by this camera will be considered for the allocation. 
-#Allocates an isochronous channel.  This function may be called multiple times, each time 
+# to channel 0 and the MSB corresponds to channe 63.  Only channels whose bit is set will
+# be considered for the allocation If \a channels_allowed = 0, the complete set of channels
+# supported by this camera will be considered for the allocation.
+#Allocates an isochronous channel.  This function may be called multiple times, each time
 # allocating an additional channel.  The channel is automatically re-allocated if there is a
-# bus reset.  The channel is automatically released when this dc1394camera_t is freed or if 
+# bus reset.  The channel is automatically released when this dc1394camera_t is freed or if
 # the application shuts down prematurely.  If the channel needs to persist beyond the lifetime
-# of this application, call \a dc1394_iso_set_persist() first.  Note that this function does 
+# of this application, call \a dc1394_iso_set_persist() first.  Note that this function does
 # _NOT_ automatically program @a camera to use the allocated channel for isochronous streaming.
 # You must do that manually using \a dc1394_video_set_iso_channel().
 _dll.dc1394_iso_allocate_channel.restype = error_t
@@ -1686,9 +1686,9 @@ _dll.dc1394_iso_allocate_channel.errcheck = _errcheck
 
 #dc1394_iso_release_channel:
 # param &camera, channel_to_release
-# Releases a previously allocated channel.  It is acceptable to release channels that were 
+# Releases a previously allocated channel.  It is acceptable to release channels that were
 # allocated by a different process or host.  If attempting to release a channel that is already
-# released, the function will succeed. 
+# released, the function will succeed.
 _dll.dc1394_iso_release_channel.restype = error_t
 _dll.dc1394_iso_release_channel.argtypes = [ POINTER( camera_t), c_int ]
 _dll.dc1394_iso_release_channel.errcheck = _errcheck
@@ -1698,7 +1698,7 @@ _dll.dc1394_iso_release_channel.errcheck = _errcheck
 #bandwidth_units: the number of isochronous bandwidth units to allocate
 #Allocates isochronous bandwidth.  This functions allocates bandwidth _in addition_ to any
 # previous allocations.  It may be called multiple times.  The bandwidth is automatically
-# re-allocated if there is a bus reset.  The bandwidth is automatically released if this 
+# re-allocated if there is a bus reset.  The bandwidth is automatically released if this
 # camera is freed or the application shuts down prematurely.  If the bandwidth needs to
 # persist beyond the lifetime of this application, call a dc1394_iso_set_persist() first.
 _dll.dc1394_iso_allocate_bandwidth.restype = error_t
@@ -1707,22 +1707,22 @@ _dll.dc1394_iso_allocate_bandwidth.errcheck = _errcheck
 
 #dc1394_iso_release_bandwidth:
 #param &camera, bandwidth_units
-#Releases previously allocated isochronous bandwidth.  Each \a dc1394camera_t keeps track of 
+#Releases previously allocated isochronous bandwidth.  Each \a dc1394camera_t keeps track of
 # a running total of bandwidth that has been allocated. Released bandwidth is subtracted from
-# this total for the sake of automatic re-allocation and automatic release on shutdown. It is 
+# this total for the sake of automatic re-allocation and automatic release on shutdown. It is
 # also acceptable for a camera to release more bandwidth than it has allocated (to clean up for
 # another process for example).  In this case, the running total of bandwidth is not affected.
-# It is acceptable to release more bandwidth than is allocated in total for the bus.  In this 
+# It is acceptable to release more bandwidth than is allocated in total for the bus.  In this
 # case, all bandwidth is released and the function succeeds.
-_dll.dc1394_iso_release_bandwidth.restype = error_t 
+_dll.dc1394_iso_release_bandwidth.restype = error_t
 _dll.dc1394_iso_release_bandwidth.argtypes = [ POINTER( camera_t), c_int ]
-_dll.dc1394_iso_release_bandwidth.errcheck = _errcheck 
+_dll.dc1394_iso_release_bandwidth.errcheck = _errcheck
 
 #dc1394_iso_release_all:
-#Releases all channels and bandwidth that have been previously allocated for this 
+#Releases all channels and bandwidth that have been previously allocated for this
 # dc1394camera_t.  Note that this information can only be tracked per process, and there is
 # no knowledge of allocations for this camera by previous processes.  To release resources in
-# such a case, the manual release functions \a dc1394_iso_release_channel() and a 
+# such a case, the manual release functions \a dc1394_iso_release_channel() and a
 # dc1394_iso_release_bandwidth() must be used.
 _dll.dc1394_iso_release_all.restype = error_t
 _dll.dc1394_iso_release_all.argtypes = [ POINTER( camera_t)]
@@ -1733,22 +1733,22 @@ _dll.dc1394_iso_release_all.errcheck = _errcheck
 #Log functions: log.h
 #####################################################################################
 # dc1394_log_register_handler: register log handler for reporting error, warning or debug
-# statements. Passing NULL as argument turns off this log level. 
+# statements. Passing NULL as argument turns off this log level.
 # params: &log_handler, type_of_the_log, message_type, log_message
 _dll.dc1394_log_register_handler.restype = error_t
 _dll.dc1394_log_register_handler.argtypes = [log_t, c_void_p, c_void_p ]
 _dll.dc1394_log_register_handler.errcheck = _errcheck
 
 #dc1394_log_set_default_handler: set the log handler to the default handler
-#At boot time, debug logging is OFF (handler is NULL). Using this function for the debug 
+#At boot time, debug logging is OFF (handler is NULL). Using this function for the debug
 # statements will start logging of debug statements usng the default handler.
 _dll.dc1394_log_set_default_handler.restype = error_t
 _dll.dc1394_log_set_default_handler.argtypes = [ log_t ]
 _dll.dc1394_log_set_default_handler.errcheck = _errcheck
 
 #dc1394_log_error: logs a fatal error condition to the registered facility
-# This function shall be invoked if a fatal error condition is encountered. The message 
-# passed as argument is delivered to the registered error reporting function registered before. 
+# This function shall be invoked if a fatal error condition is encountered. The message
+# passed as argument is delivered to the registered error reporting function registered before.
 #param [in] format,...: error message to be logged, multiple arguments allowed (printf style)
 _dll.dc1394_log_error.restype = None
 _dll.dc1394_log_error.argtypes = [ c_char_p]
@@ -1760,7 +1760,7 @@ _dll.dc1394_log_warning.restype = None
 _dll.dc1394_log_warning.argtypes = [ c_char_p ]
 
 #dc1394_log_debug: logs a debug statement to the registered facility
-# This function shall be invoked if a debug statement is to be logged. The message passed 
+# This function shall be invoked if a debug statement is to be logged. The message passed
 # as argument is delivered to the registered debug reporting function registered before
 # ONLY IF the environment variable DC1394_DEBUG has been set before the program starts.
 _dll.dc1394_log_debug.restype = None

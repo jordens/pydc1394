@@ -45,4 +45,8 @@ The library has seen contributions by the following persons::
       user: olivier-roulet
       Support for white balancing and color cameras
 
+   Tamas Haraszti (University of Heidelberg and
+         Max-Planck Institute for Metals Research,  Germany)
+      user: tomio2009
+      Support for triggers. More type safe wrapping of c-calls.
 

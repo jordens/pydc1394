@@ -48,7 +48,8 @@ def handle_common_options(o, l):
 
     guid = o.guid or cams[0]['guid']
 
-    mode = [ b(a) for a,b in zip(o.mode.split('x'), (int, int, str)) ]
+    mode = [ b(a) for a,b in zip(o.mode.split('x'), (int, int, str)) ] if \
+            o.mode is not None else None
 
     camera = Camera(l, guid=guid, mode=mode, framerate=o.fps,
                     shutter=o.shutter, gain=o.gain, isospeed = o.isospeed)

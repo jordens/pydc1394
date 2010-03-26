@@ -1,2 +1,3 @@
 .bzr-repo
 ./*.egg-info
+.git*
