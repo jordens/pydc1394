@@ -3,7 +3,7 @@ This is a pythonic wrapper around the libdc1394 Version 2 for FireWire Cameras.
 
 This work was primarily developped by Holger Rapp; I use this at work to do
 freaky things (http://www.youtube.com/watch?v=5O4FrRujlII) and I consider it
-usable though maybe not bug free. The library sees some adoption, I am aware of 
+usable and mostly bug free. The library sees some adoption, I am aware of 
 a few other institutions that are using it now.
 
 Included are also two GUIs. Both need PyOpenGL. 
@@ -35,9 +35,10 @@ SynchronizedCams.shot will then deliver two pictures taken at the same time.
 Contributors
 ============
 
-The library has seen contributions by the following persons::
+The library has seen contributions by the following persons:
 
    Holger Rapp (KIT Karlsruhe, Germany)
+      HolgerRapp@gmx.net
       user: sirver
       Project starter, maintainer
 

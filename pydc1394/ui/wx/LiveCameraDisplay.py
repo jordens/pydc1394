@@ -1,8 +1,24 @@
 #!/usr/bin/python
 # encoding: utf-8
-# (c) Copyright 2008 Holger Rapp. All Rights Reserved. 
-# 
-# HolgerRapp@gmx.net
+#
+# This file is part of pydc1394.
+#
+# pydc1394 is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# pydc1394 is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with pydc1394.  If not, see
+# <http://www.gnu.org/licenses/>.
+#
+# Copyright (C) 2009, 2010 by Holger Rapp <HolgerRapp@gmx.net>
+# and the pydc1394 contributors (see README File)
 
 from LiveImageDisplay import LiveImageDisplay, NewImageEvent
 from threading import *
@@ -16,23 +32,23 @@ class _WorkerThread(Thread):
         This class keeps requesting images from the camera and displays them
         as fast as possible
 
-        cam - camera 
+        cam - camera
         """
         Thread.__init__(self)
-        
+
         self._ld = ld
         self._cam = cam
-        
+
         self._should_abort = False
         self._abort_lock = Lock()
 
         self.start()
-        
+
     def abort(self):
         self._abort_lock.acquire()
         self._should_abort = True
         self._abort_lock.release()
-        
+
     def run(self):
         dobreak = False
         while self._cam.running:
@@ -49,12 +65,12 @@ class _WorkerThread(Thread):
             else:
                 i = self._cam.current_image
             self._cam.new_image.release()
-            
+
             if dobreak:
                 wx.PostEvent(self._ld, wx.CloseEvent()) # we continue as normal, the ld will abort us
             elif self._ld:
                 wx.PostEvent(self._ld, NewImageEvent(i))
-          
+
             wx.Yield()
 
         # The parent window should close itself now
@@ -74,13 +90,13 @@ class LiveCameraDisplay(LiveImageDisplay):
 
         LiveImageDisplay.__init__( self,parent,id,title,
                 cam.numpy_shape,cam.numpy_dtype,zoom,pos )
-        
-        
+
+
         # Well if the cam is not yet running, start it
         cam.start(interactive = True)
-        
+
         self._worker = _WorkerThread(cam,self)
-        
+
         self.Bind(wx.EVT_CLOSE,self.OnClose)
         self.Bind(wx.EVT_IDLE,self.OnIdle)
 
