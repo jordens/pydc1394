@@ -19,8 +19,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA  02110-1301  USA
 
-from _dc1394core import *
-from _dc1394core import _dll
+from pydc1394._dc1394core import *
+from pydc1394._dc1394core import _dll
 from ctypes import c_byte, c_int, c_uint32, c_int32, c_float
 
 from numpy import frombuffer, ndarray
@@ -29,225 +29,193 @@ __all__ = ["DC1394Library", "Camera"]
 
 
 class DC1394Library(object):
-    _h = None
+    _handle = None
 
     def __init__(self):
-        self._h = _dll.dc1394_new()
+        self._handle = _dll.dc1394_new()
 
     def __del__(self):
         self.close()
 
     def close(self):
-        if self._h is not None:
-            _dll.dc1394_free(self._h)
-        self._h = None
+        if self._handle is not None:
+            _dll.dc1394_free(self._handle)
+        self._handle = None
 
     @property
     def cameras(self):
-        l = POINTER(camera_list_t)()
-        _dll.dc1394_camera_enumerate(self._h, byref(l))
-        cams = [(id.guid, id.unit) for id in
-                l.contents.ids[:l.contents.num]]
-        _dll.dc1394_camera_free_list(l)
+        cam_list = POINTER(camera_list_t)()
+        _dll.dc1394_camera_enumerate(self._handle, byref(cam_list))
+        cams = [(cam.guid, cam.unit) for cam in
+                cam_list.contents.ids[:cam_list.contents.num]]
+        _dll.dc1394_camera_free_list(cam_list)
         return cams
 
     def camera_handle(self, guid, unit=None):
         if unit is None:
             handle = _dll.dc1394_camera_new(
-                    self._h, guid)
+                    self._handle, guid)
         else:
             handle = _dll.dc1394_camera_new_unit(
-                    self._h, guid, unit)
+                    self._handle, guid, unit)
         if not handle:
-            raise DC1394Exception, "Couldn't access camera (%s,%s)!" % (
+            raise DC1394Exception, "Couldn't access camera (%s, %s)!" % (
                     guid, unit)
         return handle
  
 
 class Image(ndarray):
+    frame_id = None
+    frames_behind = None
+    packet_size = None
+    position = None
+    packets_per_frame = None
+    timestampe = None
+    video_mode = None
+    data_depth = None
+    timestamp = None
+    corrupt = None
+
     @classmethod
     def from_frame(cls, frame):
         dtyp = ARRAY(c_byte, frame.contents.image_bytes)
         buf = dtyp.from_address(frame.contents.image)
         pixs = frame.contents.size[0]*frame.contents.size[1]
         end = frame.contents.little_endian and "<" or ">"
-        dt = "%su%i" % (end, frame.contents.image_bytes/pixs)
-        img = frombuffer(buf, dtype=dt)
+        typ_str = "%su%i" % (end, frame.contents.image_bytes/pixs)
+        img = frombuffer(buf, dtype=typ_str)
         img = img.reshape(frame.contents.size[::-1]).copy().view(cls)
-        img._id = frame.contents.id
-        img._frames_behind = frame.contents.frames_behind
-        img._position = frame.contents.position
-        img._packet_size = frame.contents.packet_size
-        img._packets_per_frame = frame.contents.packets_per_frame
-        img._timestamp = frame.contents.timestamp
-        img._video_mode = video_mode_vals[frame.contents.video_mode]
-        img._data_depth = frame.contents.data_depth
+        img.frame_id = frame.contents.id
+        img.frames_behind = frame.contents.frames_behind
+        img.position = frame.contents.position
+        img.packet_size = frame.contents.packet_size
+        img.packets_per_frame = frame.contents.packets_per_frame
+        img.timestamp = frame.contents.timestamp
+        img.video_mode = video_mode_vals[frame.contents.video_mode]
+        img.data_depth = frame.contents.data_depth
         return img
-
-    @property
-    def position(self):
-        "ROI position (offset)"
-        return self._position
-
-    @property
-    def packet_size(self):
-        "The size of a datapacket in bytes."
-        return self._packet_size
-
-    @property
-    def packets_per_frame(self):
-        "Number of packets per frame."
-        return self._packets_per_frame
-
-    @property
-    def timestamp(self):
-        "The IEEE Bustime when the picture was acquired (microseconds)"
-        return self._timestamp
-
-    @property
-    def frames_behind(self):
-        "the number of frames left in the ring buffer"
-        return self._frames_behind
-
-    @property
-    def id(self):
-        "the frame position in the ring buffer"
-        return self._id
-
-    @property
-    def corrupt(self):
-        "corrupt image marker (libdc1394)"
-        return self._corrupt
-    
-    @property
-    def data_depth(self):
-        "number of data bits"
-        return self._data_depth
-
-    @property
-    def video_mode(self):
-        "the valid video mode"
-        return self._video_mode
 
 
 class Feature(object):
-    def __init__(self, cam, id):
-        self._id = id
+    def __init__(self, cam, feature_id):
+        self._feature_id = feature_id
         self._cam = cam
 
     @property
     def present(self):
         k = bool_t()
         _dll.dc1394_feature_is_present(
-                self._cam, self._id, byref(k))
+                self._cam, self._feature_id, byref(k))
         return k.value
 
     @property
     def switchable(self):
         k = bool_t()
         _dll.dc1394_feature_is_switchable(
-                self._cam, self._id, byref(k))
+                self._cam, self._feature_id, byref(k))
         return bool(k.value)
 
     @property
     def active(self):
         k = bool_t()
         _dll.dc1394_feature_get_power(
-                self._cam, self._id, byref(k))
+                self._cam, self._feature_id, byref(k))
         return k.value
 
     @active.setter
     def active(self, value):
         _dll.dc1394_feature_set_power(
-            self._cam, self._id, bool(value))
+            self._cam, self._feature_id, bool(value))
 
     @property
     def modes(self):
         modes = feature_modes_t()
         _dll.dc1394_feature_get_modes(
-                self._cam, self._id, byref(modes))
-        return [feature_mode_vals_short[i]
+                self._cam, self._feature_id, byref(modes))
+        return [feature_mode_vals[i]
                 for i in modes.modes[:modes.num]]
 
     @property
     def mode(self):
         mode = feature_mode_t()
         _dll.dc1394_feature_get_mode(
-                self._cam, self._id, byref(mode))
+                self._cam, self._feature_id, byref(mode))
         return feature_mode_vals[mode.value]
 
     @mode.setter
     def mode(self, mode):
         key = feature_mode_codes[mode]
         _dll.dc1394_feature_set_mode(
-                self._cam, self._id, key)
+                self._cam, self._feature_id, key)
 
     @property
     def readable(self):
         k = bool_t()
         _dll.dc1394_feature_is_readable(
-                self._cam, self._id, byref(k))
+                self._cam, self._feature_id, byref(k))
         return k.value
 
     @property
     def value(self):
         val = c_uint32()
         _dll.dc1394_feature_get_value(
-                self._cam, self._id, byref(val))
+                self._cam, self._feature_id, byref(val))
         return val.value
 
     @value.setter
     def value(self, value):
         val = int(value)
         _dll.dc1394_feature_set_value(
-                self._cam, self._id, val)
+                self._cam, self._feature_id, val)
 
     @property
     def value_range(self):
-        min, max = c_uint32(), c_uint32()
+        min_val, max_val = c_uint32(), c_uint32()
         _dll.dc1394_feature_get_boundaries(
-                self._cam, self._id, byref(min), byref(max))
-        return (min.value,max.value)
+                self._cam, self._feature_id,
+                byref(min_val), byref(max_val))
+        return min_val.value, max_val.value
 
     @property
     def absolute_capable(self):
         k = bool_t()
         _dll.dc1394_feature_has_absolute_control(
-                self._cam, self._id, byref(k))
+                self._cam, self._feature_id, byref(k))
         return k.value
 
     @property
     def absolute(self):
         val = c_float()
         _dll.dc1394_feature_get_absolute_value(
-                self._cam, self._id, byref(val))
+                self._cam, self._feature_id, byref(val))
         return val.value
 
     @absolute.setter
     def absolute(self, value):
         val = float(value)
         _dll.dc1394_feature_set_absolute_value(
-                self._cam, self._id, val)
+                self._cam, self._feature_id, val)
 
     @property
     def absolute_control(self):
         k = bool_t()
         _dll.dc1394_feature_get_absolute_control(
-                self._cam, self._id, byref(k))
+                self._cam, self._feature_id, byref(k))
         return k.value
 
     @absolute_control.setter
     def absolute_control(self, value):
         val = int(value)
         _dll.dc1394_feature_set_absolute_control(
-                self._cam, self._id, val)
+                self._cam, self._feature_id, val)
 
     @property
     def absolute_range(self):
-        min, max = c_float(), c_float()
+        min_val, max_val = c_float(), c_float()
         _dll.dc1394_feature_get_absolute_boundaries(
-                self._cam, self._id, byref(min), byref(max))
-        return (min.value,max.value)
+                self._cam, self._feature_id,
+                byref(min_val), byref(max_val))
+        return min_val.value, max_val.value
 
     def setup(self, value=None, active=True, mode="manual", absolute=True,
             **kwargs):
@@ -258,8 +226,8 @@ class Feature(object):
             self.mode = mode
             if mode is "auto":
                 return
-        for k,v in kwargs.items():
-            setattr(self, k, v)
+        for key, val in kwargs.items():
+            setattr(self, key, val)
         if absolute is not None:
             self.absolute_control = absolute
         if value is None:
@@ -287,7 +255,7 @@ class Trigger(Feature):
     @property
     def modes(self):
         finfo = feature_info_t()
-        finfo.id = self._id
+        finfo.id = self._feature_id
         _dll.dc1394_feature_get(
                 self._cam, byref(finfo))
         modes = finfo.trigger_modes
@@ -310,7 +278,7 @@ class Trigger(Feature):
     @property
     def polarity_capable(self):
         finfo = feature_info_t()
-        finfo.id = self._id
+        finfo.id = self._feature_id
         _dll.dc1394_feature_get(self._cam, byref(finfo))
         return bool(finfo.polarity_capable)
     
@@ -368,7 +336,7 @@ class Whitebalance(Feature):
         blue, red = c_uint32(), c_uint32()
         _dll.dc1394_feature_whitebalance_get_value(
             self._cam, byref(blue), byref(red))
-        return (blue.value, red.value)
+        return blue.value, red.value
             
     @value.setter
     def value(self, value):
@@ -383,7 +351,7 @@ class Temperature(Feature):
         setpoint, current = c_uint32(), c_uint32()
         _dll.dc1394_feature_temperature_get_value(
             self._cam, byref(setpoint), byref(current))
-        return (setpoint.value, current.value)
+        return setpoint.value, current.value
             
     @value.setter
     def value(self, value):
@@ -395,37 +363,33 @@ class Temperature(Feature):
 class Whiteshading(Feature):
     @property
     def value(self):
-        r, g, b = c_uint32(), c_uint32(), c_uint32()
+        red, green, blue = c_uint32(), c_uint32(), c_uint32()
         _dll.dc1394_feature_whiteshading_get_value(
-            self._cam, byref(r), byref(g), byref(b))
-        return (r.value, g.value, b.value)
+            self._cam, byref(red), byref(green), byref(blue))
+        return red.value, green.value, blue.value
             
     @value.setter
     def value(self, value):
-        r, g, b = map(int, value)
+        red, green, blue = value
         _dll.dc1394_feature_temperature_set_value(
-                self._cam, r, g, b)
+                self._cam, int(red), int(green), int(blue))
 
 
-feature_map = dict((n, Feature) for n in feature_codes)
-feature_map["trigger"] = Trigger
-feature_map["white_shading"] = Whiteshading
-feature_map["white_balance"] = Whitebalance
-feature_map["temperature"] = Temperature
+_feature_map = dict((n, Feature) for n in feature_codes)
+_feature_map["trigger"] = Trigger
+_feature_map["white_shading"] = Whiteshading
+_feature_map["white_balance"] = Whitebalance
+_feature_map["temperature"] = Temperature
 
 
 class Mode(object):
-    def __init__(self, cam, id):
-        self._id = id
+    def __init__(self, cam, mode_id):
+        self._mode_id = mode_id
         self._cam = cam
 
     @property
-    def id(self):
-        return self._id
-
-    @property
     def name(self):
-        return video_mode_vals[self._id]
+        return video_mode_vals[self._mode_id]
 
     def __str__(self):
         return self.name
@@ -434,7 +398,7 @@ class Mode(object):
     def rates(self):
         fpss = framerates_t()
         _dll.dc1394_video_get_supported_framerates(
-                self._cam, self._id, byref(fpss))
+                self._cam, self._mode_id, byref(fpss))
         return [framerate_vals[i]
                 for i in fpss.framerates[:fpss.num]]
 
@@ -443,14 +407,14 @@ class Mode(object):
         w = c_uint32()
         h = c_uint32()
         _dll.dc1394_get_image_size_from_video_mode(
-                self._cam, self._id, byref(w), byref(h))
+                self._cam, self._mode_id, byref(w), byref(h))
         return w.value, h.value
 
     @property
     def color_coding(self):
         cc = color_coding_t()
         _dll.dc1394_get_color_coding_from_video_mode(
-                self._cam, self._id, byref(cc))
+                self._cam, self._mode_id, byref(cc))
         return color_coding_vals[cc.value]
 
 
@@ -463,7 +427,7 @@ class Format7(Mode):
     def frame_interval(self):
         fi = c_float()
         _dll.dc1394_format7_get_frame_interval(self._cam,
-                    self._id, byref(fi))
+                    self._mode_id, byref(fi))
         return fi.value
 
     @property
@@ -471,7 +435,7 @@ class Format7(Mode):
         hsize = c_uint32()
         vsize = c_uint32()
         _dll.dc1394_format7_get_max_image_size(
-                self._cam, self._id,
+                self._cam, self._mode_id,
                 byref(hsize), byref(vsize))
         return hsize.value, vsize.value
 
@@ -480,14 +444,14 @@ class Format7(Mode):
         hsize = c_uint32()
         vsize = c_uint32()
         _dll.dc1394_format7_get_image_size(
-                self._cam, self._id,
+                self._cam, self._mode_id,
                 byref(hsize), byref(vsize))
         return hsize.value, vsize.value
 
     @size.setter
     def size(self, width, height):
         _dll.dc1394_format7_set_image_size(
-                self._cam, self._id,
+                self._cam, self._mode_id,
                 width, height)
 
     @property
@@ -495,21 +459,21 @@ class Format7(Mode):
         x = c_uint32()
         y = c_uint32()
         _dll.dc1394_format7_get_image_position(
-                self._cam, self._id,
+                self._cam, self._mode_id,
                 byref(x), byref(y))
         return x.value, y.value
 
     @position.setter
     def position(self, x, y):
         _dll.dc1394_format7_set_image_position(
-                self._cam, self._id,
+                self._cam, self._mode_id,
                 x, y)
 
     @property
     def color_codings(self):
         pos_codings = color_codings_t()
         _dll.dc1394_format7_get_color_codings(
-                self._cam, self._id,
+                self._cam, self._mode_id,
                 byref(pos_codings))
         return [color_coding_vals[i]
                 for i in pos_codings.codings[:pos_codings.num]]
@@ -518,21 +482,21 @@ class Format7(Mode):
     def color_coding(self):
         cc = color_coding_t()
         _dll.dc1394_format7_get_color_coding(
-                self._cam, self._id, byref(cc))
+                self._cam, self._mode_id, byref(cc))
         return color_coding_vals[cc.value]
 
     @color_coding.setter
     def color_coding(self, color):
         code = color_coding_codes[color]
         _dll.dc1394_format7_set_color_coding(
-                self._cam, self._id, code)
+                self._cam, self._mode_id, code)
 
     @property
     def unit_position(self):
         h_unit = c_uint32()
         v_unit = c_uint32()
         _dll.dc1394_format7_get_unit_position(
-                self._cam, self._id,
+                self._cam, self._mode_id,
                 byref(h_unit), byref(v_unit))
         return h_unit.value, v_unit.value
 
@@ -541,7 +505,7 @@ class Format7(Mode):
         h_unit = c_uint32()
         v_unit = c_uint32()
         _dll.dc1394_format7_get_unit_size(
-                self._cam, self._id,
+                self._cam, self._mode_id,
                 byref(h_unit), byref(v_unit))
         return h_unit.value, v_unit.value
 
@@ -550,7 +514,7 @@ class Format7(Mode):
         w, h, x, y = c_int32(), c_int32(), c_int32(), c_int32()
         cco, bpp = color_coding_t(), c_int32()
         _dll.dc1394_format7_get_roi(
-            self._cam, self._id, byref(cco), byref(bpp),
+            self._cam, self._mode_id, byref(cco), byref(bpp),
             byref(x), byref(y), byref(w), byref(h))
         return ((w.value, h.value), (x.value, y.value),
             color_coding_vals[cco.value], bpp.value)
@@ -559,14 +523,14 @@ class Format7(Mode):
     def roi(self, args):
         size, position, color, bpp = args
         _dll.dc1394_format7_set_roi(
-            self._cam, self._id, color_coding_codes[color],
+            self._cam, self._mode_id, color_coding_codes[color],
             bpp, position[0], position[1], size[0], size[1])
 
     @property
     def recommended_byte_per_packet(self):
         bpp = c_uint32()
         _dll.dc1394_format7_get_recommended_byte_per_packet(
-            self._cam, self._id, byref(bpp))
+            self._cam, self._mode_id, byref(bpp))
         return bpp.value
 
     @property
@@ -574,43 +538,43 @@ class Format7(Mode):
         bpp_min = c_uint32()
         bpp_max = c_uint32()
         _dll.dc1394_format7_get_packet_para(
-            self._cam, self._id, byref(bpp_min), byref(bpp_max))
+            self._cam, self._mode_id, byref(bpp_min), byref(bpp_max))
         return bpp_min.value, bpp_max.value
 
     @property
     def byte_per_packet(self):
         bpp = c_uint32()
         _dll.dc1394_format7_get_byte_per_packet(
-            self._cam, self._id, byref(bpp))
+            self._cam, self._mode_id, byref(bpp))
         return bpp.value
 
     @byte_per_packet.setter
     def byte_per_packet(self, bpp):
         _dll.dc1394_format7_set_byte_per_packet(
-            self._cam, self._id, int(bpp))
+            self._cam, self._mode_id, int(bpp))
 
     @property
     def packet_per_frame(self):
         ppf = c_uint32()
         _dll.dc1394_format7_get_packet_per_frame(
-            self._cam, self._id, byref(ppf))
+            self._cam, self._mode_id, byref(ppf))
         return ppf.value
 
     @property
     def data_depth(self):
         dd = c_uint32()
         _dll.dc1394_format7_get_data_depth(
-            self._cam, self._id, byref(dd))
+            self._cam, self._mode_id, byref(dd))
         return dd.value
 
     @property
     def pixel_number(self):
         px = c_uint32()
         _dll.dc1394_format7_get_pixel_number(
-            self._cam, self._id, byref(px))
+            self._cam, self._mode_id, byref(px))
         return px.value
 
-    def setup(self, size, offset=(0,0), color="Y8", bpp=USE_RECOMMENDED):
+    def setup(self, size, offset=(0, 0), color="Y8", bpp=USE_RECOMMENDED):
         wu, hu = self.unit_size
         xu, yu = self.unit_position
         position = xu*int(offset[0]/xu), yu*int(offset[1]/yu)
@@ -619,7 +583,7 @@ class Format7(Mode):
         return self.roi
 
 
-video_mode_map = {
+_mode_map = {
        64: Mode,
        65: Mode,
        66: Mode,
@@ -678,8 +642,8 @@ class Camera(object):
         self._lib = lib # _we_ need to ensure the dc1394 context is alive
         self._cam = handle
 
-        self._load_features()
-        self._load_modes()
+        self._features = self._load_features()
+        self._modes, self._modes_dict = self._load_modes()
         if isospeed is not None:
             self.isospeed = isospeed
         if mode is not None:
@@ -780,10 +744,10 @@ class Camera(object):
             s = fs.feature[i]
             if s.available:
                 name = feature_vals[s.id]
-                feature = feature_map[name](self._cam, s.id)
+                feature = _feature_map[name](self._cam, s.id)
                 features[name] = feature
                 setattr(self, name, feature)
-        self._features = features
+        return features
 
     @property
     def features(self):
@@ -797,9 +761,10 @@ class Camera(object):
     def _load_modes(self):
         modes = video_modes_t()
         _dll.dc1394_video_get_supported_modes(self._cam, byref(modes))
-        self._modes = [video_mode_map[i](self._cam, i)
+        modes = [_mode_map[i](self._cam, i)
                 for i in modes.modes[:modes.num]]
-        self._modes_dict = dict((m.id, m) for m in self._modes)
+        modes_dict = dict((m.mode_id, m) for m in self._modes)
+        return modes, modes_dict
 
     @property
     def modes(self):
@@ -849,7 +814,7 @@ class Camera(object):
 
     @mode.setter
     def mode(self, mode):
-        _dll.dc1394_video_set_mode(self._cam, mode.id)
+        _dll.dc1394_video_set_mode(self._cam, mode.mode_id)
 
     @property
     def rate(self):
