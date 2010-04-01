@@ -192,8 +192,21 @@ class Image(ndarray):
         return ndarray.__array_wrap__(self, res, context)
     #end of __array_wrap__
 
+    @property
+    def color_coding_name(self):
+        if color_coding_vals.has_key( self.color_coding):
+            return color_coding_vals[ self.color_coding ]
+        else:
+            return "unknown"
+
+
     def as_RGB(self):
-        """ Convert the image to an RGB image. Returns an RGB image """
+        """ Convert the image to an RGB image. Returns a numpy array containing
+            an RGB image. (For example for display purposes)
+            Array shape is: image.shape[0], image.shape[1], 3
+            
+            Uses the dc1394_convert_to_RGB() function for the conversion.
+        """
         if self._cam == None:
             print "Can not convert without the camera isntance"
             return None
@@ -213,7 +226,11 @@ class Image(ndarray):
     #end of as_RGB
     
     def as_MONO8(self):
-        """ Convert he image to gray scale 8 bit. Returns a new image """
+        """ Convert he image to gray scale 8 bit. Returns a numpy array
+            containing the image data.    
+            
+            Uses the dc1394_convert_to_MONO8() funciton
+        """
         if self._cam == None:
             print "Conversion needs an opened camera instance"
             return None
@@ -232,7 +249,13 @@ class Image(ndarray):
     #end of as_MONO8
 
     def as_YUV422(self):
-        """ Converts an image to YUV422 format if someone needs that """
+        """ Convert he image to YUV422 color format. 
+            Returns a numpy array containing the image data.
+            (this function is here for completeness. Numpy arrays
+            may not be optimal for such image types.)
+            
+            Uses the dc1394_convert_to_YUV422() funciton
+        """
         if self._cam == None:
             print "Conversion needs a camera instance "
             return None

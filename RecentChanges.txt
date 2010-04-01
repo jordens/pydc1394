@@ -36,3 +36,6 @@
     shape[0]. This makes no difference between monochrom -> RGB, but may
     matter for YUV422 -> RGB.
 
+    Added a Image.color_coding_name for translating the Image.color_coding to
+    something human readable.
+
