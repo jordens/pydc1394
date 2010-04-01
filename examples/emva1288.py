@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from pydc1394.camera2 import DC1394Library, Camera, DC1394Error
+from pydc1394.camera2 import Camera, DC1394Error
 from struct import pack, unpack, calcsize
 import time, select
 import numpy as np
@@ -13,15 +13,12 @@ def info(cam):
     print "guid: %x" % cam.guid
 
     for f in cam.features:
-        try:
-            feat = getattr(cam, f)
-            if feat.absolute_capable:
-                v = feat.absolute
-            else:
-                v = feat.value
-            print "feature %s: %s" % (f, v)
-        except DC1394Error, e:
-            print "could not read feature %s: %s" % (f, e)
+        feat = getattr(cam, f)
+        if feat.absolute_capable:
+            v = feat.absolute
+        else:
+            v = feat.value
+        print "feature %s: %s" % (f, v)
 
     m0 = cam.mode
     for m in cam.modes:
