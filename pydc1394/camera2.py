@@ -25,8 +25,6 @@ from ctypes import c_byte, c_int, c_uint32, c_int32, c_float
 
 from numpy import frombuffer, ndarray
 
-__all__ = ["Context", "Camera", "DC1394Error"]
-
 
 class Context(object):
     """
