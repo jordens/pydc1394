@@ -657,8 +657,10 @@ class Camera(object):
         if self._cam:
             _dll.dc1394_camera_free(self._cam)
         self._cam = None
-        if self._lib:
-            self._lib.close()
+        # do not invalidate the library here
+        # someone else could be using it
+        # if self._lib:
+        #     self._lib.close()
         self._lib = None
   
     def power(self, on=True):
