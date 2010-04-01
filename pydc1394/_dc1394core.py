@@ -5,6 +5,8 @@
 
 from ctypes import *
 from ctypes.util import find_library
+from numpy import ctypeslib as ct
+from numpy import uint8
 import sys
 
 
@@ -1123,20 +1125,24 @@ _dll.dc1394_capture_is_frame_corrupt.argtypes = [ POINTER(camera_t), POINTER(vid
 # Conversion (covert.h)
 #####################################################################
 #parameters: *source, *dest, width, height, source_color_coding, bits
+
+#make the converters numpy compatible:
+array_uint8 = ct.ndpointer( dtype=uint8, ndim=1, flags='C_CONTIGUOUS')
+
 _dll.dc1394_convert_to_YUV422.restype = error_t
-_dll.dc1394_convert_to_YUV422.argtypes = [ POINTER(c_uint8), POINTER( c_uint8), c_uint32, \
+_dll.dc1394_convert_to_YUV422.argtypes = [ array_uint8, array_uint8, c_uint32, \
                                         c_uint32, c_uint32, color_coding_t, c_uint32 ]
 _dll.dc1394_convert_to_YUV422.errcheck = _errcheck
 
 #Converts an image buffer to MONO8
 _dll.dc1394_convert_to_MONO8.restype = error_t
-_dll.dc1394_convert_to_MONO8.argtypes = [ POINTER(c_uint8), POINTER( c_uint8), c_uint32, \
+_dll.dc1394_convert_to_MONO8.argtypes = [ array_uint8, array_uint8, c_uint32, \
                                         c_uint32, c_uint32, color_coding_t, c_uint32 ]
 _dll.dc1394_convert_to_MONO8.errcheck = _errcheck
 
 #Converts an image buffer to RGB8
 _dll.dc1394_convert_to_RGB8.restype = error_t
-_dll.dc1394_convert_to_RGB8.argtypes = [ POINTER(c_uint8), POINTER( c_uint8), c_uint32, \
+_dll.dc1394_convert_to_RGB8.argtypes = [ array_uint8, array_uint8, c_uint32, \
                                         c_uint32, c_uint32, color_coding_t, c_uint32 ]
 _dll.dc1394_convert_to_RGB8.errcheck = _errcheck
 

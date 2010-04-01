@@ -1,0 +1,38 @@
+2010.03.30:
+    Get conversion into the Image class.
+
+    Rewrote the Image class from scratch. Based on that it is a subclass of
+    ndarray, based on the camera and a frame, the new generator inherits the
+    parameters, and the wrapper is added to inherit these further to derived
+    children (results of ufunc operations).
+
+    New thing: added an as_RGB() function to Image, which supposed to return a
+    child image in RGB format. Now it needs to be tested.
+    One trick affecting the _dc1394core.py: the numpy.ctypeslib has an
+    ndpointer tool to pass numpy arrays directly to C functions. This should
+    work for the original converters.
+
+    Another important note: since this relies on the dc1394 built in
+    converters, the library is needed to stay open. Actually the image
+    inherits the camera class which camera took it.
+    The basic concept: take an image and store it or convert it. Release the
+    camera when only the ndarray is needed further.
+
+2010.03.31:
+    Added the other two conversions to MONO8 and YUV422 formats. I am not sure
+    about the storage of the latter in a numpy array, so this may be faulty at
+    the moment.
+
+    Also the Bayer pattern tools are not included at the moment. It would be
+    good to test them with a camera providing this actually.
+
+    The Image.as_MONO8() and the Image.as_YUV422() reports not tobe available,
+    at least on our cameras. I am not sure if they are working for anyone.
+
+    Shape: there was an error that the mode setting was setting mode[1],
+    mode[0], but the FORMAT7 mode was taking [widht,height] for the shape. 
+    Now it is changed to [height,width] and seems o.k.
+    The conversion requests a width and height, so it has to receive shape[1],
+    shape[0]. This makes no difference between monochrom -> RGB, but may
+    matter for YUV422 -> RGB.
+
