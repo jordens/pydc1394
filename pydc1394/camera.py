@@ -190,6 +190,7 @@ class _CamAcquisitonThread(Thread):
             if sa:
                 break
 
+            self._condition.acquire()
             img = self._cam.capture(poll=False)
             self._cam._current_img = img
 
