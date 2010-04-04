@@ -41,8 +41,9 @@ def capture(cam, n):
     cam.start_multi_shot(n)
     t = time.time()
     for i in range(n):
-        im = cam.capture(mark_corrupt=True)
-        print i, (time.time()-t)/(i+1), im.frames_behind, im.id
+        im = cam.dequeue()
+        print i, (time.time()-t)/(i+1), im.frames_behind, im.frame_id
+        cam.enqueue(im)
     cam.stop_multi_shot()
     cam.stop_capture()
 

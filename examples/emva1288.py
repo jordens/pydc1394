@@ -170,10 +170,11 @@ def capture(cam, n, crop):
     cam.start_video()
     ims = []
     while len(ims) < n+1:
-        im = cam.capture(mark_corrupt=True)
-        if not im.corrupt:
-            im = im[crop:-crop, crop:-crop]
+        im = cam.dequeue()
+        if not cam.corrupt(im):
+            im = im[crop:-crop, crop:-crop].copy()
             ims.append(im)
+        cam.enqueue(im)
     cam.stop_video()
     cam.stop_capture()
     return np.array(ims[1:])
