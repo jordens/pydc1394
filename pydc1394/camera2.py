@@ -29,8 +29,21 @@ from numpy import frombuffer, ndarray
 class Context(object):
     """
     The DC1394 context.
-    Each application should maintain one of these. The health of a
-    context is ensured by the :class:`Camera` objects.
+
+    Each application should maintain one of these, especially if it
+    wants to access several cameras. But as the :class:`Camera` objects
+    will create a Context themselves if not supplied with one, it is not
+    strictly necessary.
+
+    Additionally, since the context needs to stay alive for the lifespan
+    of the Camera objects, their health is enforced by the
+    :class:`Camera` objects.
+
+    The available camera GUIDs can be obtained from the :attr:`cameras`
+    list. To obtain a :class:`Camera` object for a certain camera,
+    either the :meth:`camera` method of a :class:`Context` object 
+    can be used or the context can be passed to the :class:`Camera`
+    constructor.
     """
     _handle = None
 
@@ -42,7 +55,9 @@ class Context(object):
 
     def close(self):
         """
-        Frees the library and the dc1394 context
+        Frees the library and the dc1394 context.
+        
+        After calling this, all cameras in this context are invalid.
         """
         if self._handle is not None:
             _dll.dc1394_free(self._handle)
@@ -52,6 +67,7 @@ class Context(object):
     def cameras(self):
         """
         The list of cameras attached to the system.
+
         Each item contains the GUID of the camera and the unit number.
         Pass a (GUID, unit) tuple of the list to camera_handle() to
         obtain a handle.
@@ -66,7 +82,12 @@ class Context(object):
     def camera_handle(self, guid, unit=None):
         """
         Obtain a camera handle given the GUID and optionally the unit
-        number of the camera. Pass this handle to Camera().
+        number of the camera.
+        
+        Pass this handle to :class:`Camera` or to :meth:`camera`.
+
+        A :class:`DC1394Exception` will be thrown if the requested
+        camera is inaccessible.
         """
         if unit is None:
             handle = _dll.dc1394_camera_new(
@@ -79,6 +100,13 @@ class Context(object):
                     guid, unit)
         return handle
  
+    def camera(self, guid, unit=None, **kwargs):
+        """
+        Obtain a :class:`Camera` instance for a given camera GUID.
+        """
+        handle = self.camera_handle(guid, unit)
+        return Camera(context=self, handle=handle, **kwargs)
+
 
 class Image(ndarray):
     """
@@ -99,6 +127,7 @@ class Image(ndarray):
     def from_frame(cls, frame):
         """
         Convert a dc1394 frame into an Image instance.
+
         All metadata are retained as attributes of the resulting image.
         """
         dtyp = ARRAY(c_byte, frame.contents.image_bytes)
@@ -121,15 +150,33 @@ class Image(ndarray):
 
 class Feature(object):
     """
-    A feature of a dc1394 camera. Features have several readable and
-    adjustable knobs and can refer to different elements in the camera.
-    In IIDC, 'features' refer to a number of image parameters that can
-    be tuned like exposure, white balance, etc... Features are adjusted
-    with a number of specific methods. The name of each feature is
-    relatively easy to understand. The only trick is that the EXPOSURE
-    feature is actually an AUTO exposure function. Its behaviour depends
-    on the manufacturer.
+    A feature of a dc1394 camera.
+    
+    Features have several readable and adjustable knobs and can refer to
+    different elements in the camera.  In IIDC, 'features' refer to a
+    number of image parameters that can be tuned like exposure, white
+    balance, etc... Features are adjusted with a number of specific
+    methods. The name of each feature is relatively easy to understand.
+    The only trick is that the EXPOSURE feature is actually an AUTO
+    exposure function. Its behaviour depends on the manufacturer.
+
+    A feature can be activated or deactived via the :attr:`active`
+    attribute if they are :attr:`switchable`.
+
+    The :attr:`mode` of operation (manual, auto, or one_push) 
+    can be one of those in :attr:`modes`.
+
+    The value is either given via the :attr:`value` or :attr:`absolute`
+    attribute depending on whether the feature is
+    :attr:`absolute_capable` and whether it is in
+    :attr:`absolute_control`. The non-absolute value is an integer with
+    a meaning that may be internal to the camera and vendor specific.
+    Units of :attr:`absolute`?
+
+    The absolute value must be in the :attr:`absolute_range`
+    and the internal value must be in :attr:`value_range`.
     """
+
     def __init__(self, cam, feature_id):
         self._feature_id = feature_id
         self._cam = cam
@@ -138,6 +185,7 @@ class Feature(object):
     def name(self):
         """
         The name of this feature.
+
         A camera object contains this feature as a named attribute.
         """
         return feature_vals[self._feature_id]
@@ -156,6 +204,7 @@ class Feature(object):
     def switchable(self):
         """
         Can the feature be activated and deactivated?
+
         Use :attr:`active` to enable and disable this feature.
         """
         k = bool_t()
@@ -182,6 +231,7 @@ class Feature(object):
     def modes(self):
         """
         Containes the list of allowed modes of this feature.
+
         Use :attr:`mode` to get or set the current mode.
         """
         modes = feature_modes_t()
@@ -193,10 +243,12 @@ class Feature(object):
     @property
     def mode(self):
         """
-        The current operation mode of this feature. Feature modes are
-        the way the feature is controlled. Three modes exist: MANUAL,
-        AUTO and ONE_PUSH_AUTO. The latter performs an automatic setting
-        before self-clearing.
+        The current operation mode of this feature.
+        
+        Feature modes are the way the feature is controlled. Three modes
+        exist: ``"manual"``, ``"auto"`` and ``"one_push"``. The latter
+        performs an automatic setting before self-clearing.
+
         Use :attr:`modes` to obtain a list of allowed values.
         """
         mode = feature_mode_t()
@@ -262,6 +314,7 @@ class Feature(object):
     def absolute(self):
         """
         The current value of the feature in absolute (physical) units.
+
         Refer to the documentation of your camera and the respective
         feature what these absolute units are.
         """
@@ -280,7 +333,7 @@ class Feature(object):
     def absolute_control(self):
         """
         Is the value of the feature controlled by the :attr:`value`
-        integer or by physical units via :attr:`absolute`.
+        integer or by physical units via :attr:`absolute`?
         """
         k = bool_t()
         _dll.dc1394_feature_get_absolute_control(
@@ -309,9 +362,11 @@ class Feature(object):
             **kwargs):
         """
         Set up several properties of this feature with one call.
+
         The function defaults to activating the feature, subjecting it
-        to "manual" and "absolute" control. You can pass any additional
-        attributes to be set as keyword arguments.
+        to "manual" and "absolute" control. You can pass a value if
+        desired. Any additional keyword arguments will be set as
+        attributes.
         """
         self.active = active
         if not active:
@@ -321,7 +376,8 @@ class Feature(object):
             if mode is "auto":
                 return
         for key, val in kwargs.items():
-            setattr(self, key, val)
+            if hasattr(self, key):
+                setattr(self, key, val)
         if absolute is not None and self.absolute_capable:
             self.absolute_control = absolute
         if value is None:
@@ -353,6 +409,7 @@ class Trigger(Feature):
     def modes(self):
         """
         Possible modes to trigger the camera.
+
         Trigger mode mostly refer to external trigger. Each trigger has
         a meaning specified in the IIDC specifications.
 
@@ -389,7 +446,8 @@ class Trigger(Feature):
     @property
     def mode(self):
         """
-        You can choose between several trigger modes.
+        The currently active trigger mode.
+
         You camera may not support all trigger modes.
         See :attr:`modes` for a documentation of the different modes.
         """
@@ -418,6 +476,8 @@ class Trigger(Feature):
     def polarity(self):
         """
         The current active polarity for the trigger input.
+
+        Either ACTIVE_LOW or ACTIVE_HIGH.
         """
         pol = trigger_polarity_t()
         _dll.dc1394_external_trigger_get_polarity(
@@ -434,6 +494,7 @@ class Trigger(Feature):
     def source(self):
         """
         The physical source for the trigger signal.
+
         Some cameras let you select the external trigger input.
         """
         source = trigger_source_t()
@@ -450,8 +511,9 @@ class Trigger(Feature):
     @property
     def sources(self):
         """
-        Allowed sources for the trigger condition. Use :attr:`source` to
-        get or set the current source.
+        Allowed sources for the trigger condition.
+        
+        Use :attr:`source` to get or set the current source.
         """
         src = trigger_sources_t()
         _dll.dc1394_external_trigger_get_supported_sources(
@@ -503,7 +565,7 @@ class Temperature(Feature):
         The current temperature is a tuple of the current target
         temperature (setpoint) and the actual temperature. Setting the
         value only requires one parameter: the new setpoint temperature
-        All temperatures are given in deci-kelvin.
+        All temperatures are given in deci-degrees kelvin.
         """
         setpoint, current = c_uint32(), c_uint32()
         _dll.dc1394_feature_temperature_get_value(
@@ -544,8 +606,13 @@ _feature_map["temperature"] = Temperature
 
 class Mode(object):
     """
-    A possible video mode for a DC1394 camera.
+    A video mode for a DC1394 camera.
+    
+    Do not instantiate this class directly. Instead use one of the modes
+    in :attr:`Camera.modes` or :attr:`Camera.modes_dict` and assign it to
+    :attr:`Camera.mode`.
     """
+
     def __init__(self, cam, mode_id):
         self._mode_id = mode_id
         self._cam = cam
@@ -553,7 +620,7 @@ class Mode(object):
     @property
     def name(self):
         """
-        A descriptive name for this mode.
+        A descriptive name for this mode. Like 640x480_Y8 or FORMAT7_2
         """
         return video_mode_vals[self._mode_id]
 
@@ -574,7 +641,7 @@ class Mode(object):
     @property
     def image_size(self):
         """
-        The size (in pixels) of images acquired in this mode.
+        The size in pixels of frames acquired in this mode.
         """
         w = c_uint32()
         h = c_uint32()
@@ -601,20 +668,33 @@ class Format7(Mode):
     """
     Format7 modes are flexible modes that support:
     
-    * acquiring and transferring only a subsection of the image:
-      regio-of-interes (ROI)
+    * acquiring and transferring only a subsection of the frame for
+      faster acquisition: regio-of-interes (ROI)
     * binning the pixels of the sensor for faster acquisition and
-      reduced readout noise.
+      reduced readout noise. The binning strategy in the different
+      Format7 modes is defined by the vendor.
 
-    Some aspects of Format7 modes can be altered while an acquisition is
+    Many aspects of Format7 modes can be altered while an acquisition is
     in progress. A notable exception from this is the the size of the
     packet.
+
+    Use :attr:`max_size`, :attr:`unit_size`, :attr:`unit_position`,
+    :attr:`color_codings`, and :attr:`data_depth` to obtain information
+    about the mode and then set its parameters via the attributes 
+    :attr:`size`, :attr:`position`, :attr:`color_coding`, and
+    :attr:`byte_per_packet` or all of them via the :attr:`roi` attribute
+    or with a call to :meth:`setup`.
+
+    All settings are sent to the hardware right away.
     """
 
     @property
     def frame_interval(self):
         """
         The current frame interval in this format7 mode in seconds.
+        
+        This attribute is read-only. Use the :attr:`Camera.framerate` and
+        :attr:`Camera.shutter` features to influence the framerate.
         """
         fi = c_float()
         _dll.dc1394_format7_get_frame_interval(self._cam,
@@ -654,8 +734,8 @@ class Format7(Mode):
     @property
     def position(self):
         """
-        The start position of the upper left corner 
-        of the ROI in pixels (horizontal and vertical).
+        The start position of the upper left corner of the ROI in
+        pixels (horizontal and vertical).
         """
         x = c_uint32()
         y = c_uint32()
@@ -701,8 +781,9 @@ class Format7(Mode):
     @property
     def unit_position(self):
         """
-        Horizontal and vertical position multiples. See also
-        :attr:`position`.
+        Horizontal and vertical position multiples.
+        
+        See also :attr:`position`.
         """
         h_unit = c_uint32()
         v_unit = c_uint32()
@@ -714,7 +795,9 @@ class Format7(Mode):
     @property
     def unit_size(self):
         """
-        Horizontal and vertical size multiples. See also :attr:`size`.
+        Horizontal and vertical size multiples.
+        
+        See also :attr:`size`.
         """
         h_unit = c_uint32()
         v_unit = c_uint32()
@@ -726,11 +809,14 @@ class Format7(Mode):
     @property
     def roi(self):
         """
+        Get and set all Format7 parameters at once.
+
         The following definitions can be used to set ROI of Format_7 in
-        a simpler fashion. QUERY_FROM_CAMERA will use the current value
-        used by the camera, USE_MAX_AVAIL will set the value to its
-        maximum and USE_RECOMMENDED can be used for the bytes-per-packet
-        setting.
+        a simpler fashion:
+        
+        * QUERY_FROM_CAMERA will use the current value used by the camera,
+        * USE_MAX_AVAIL will set the value to its maximum and
+        * USE_RECOMMENDED can be used for the bytes-per-packet setting.
         """
         w, h, x, y = c_int32(), c_int32(), c_int32(), c_int32()
         cco, bpp = color_coding_t(), c_int32()
@@ -787,6 +873,9 @@ class Format7(Mode):
     def packet_per_frame(self):
         """
         Current number of packets per frame.
+
+        packet_per_frame is read-only. Use :attr:`byte_per_packet`
+        to influence its value.
         """
         ppf = c_uint32()
         _dll.dc1394_format7_get_packet_per_frame(
@@ -813,12 +902,16 @@ class Format7(Mode):
             self._cam, self._mode_id, byref(px))
         return px.value
 
-    def setup(self, size, offset=(0, 0), color="Y8",
-            bpp=USE_RECOMMENDED):
+    def setup(self, size=(QUERY_FROM_CAMERA, QUERY_FROM_CAMERA),
+            offset=(QUERY_FROM_CAMERA, QUERY_FROM_CAMERA),
+            color=QUERY_FROM_CAMERA, bpp=USE_RECOMMENDED):
         """
-        Setup this Format7 mode. Before setting the ROI,
-        size and offset are made multiples of
-        :attr:`unit_size` and :attr:`unit_position`.
+        Setup this Format7 mode.
+        
+        Similar to setting :attr:`roi` but size and offset are made
+        multiples of :attr:`unit_size` and :attr:`unit_position`. All
+        arguments are optional and default to not changing the current
+        value. :attr:`byte_per_packet` is set to the recommended value.
         """
         wu, hu = self.unit_size
         xu, yu = self.unit_position
@@ -866,12 +959,13 @@ _mode_map = {
 
 class Camera(object):
     """
-    This class represents a IEEE1394 Camera on the BUS.
+    This class represents a IEEE1394 Camera on the bus.
     """
-    _cam = None
-    _lib = None
 
-    def __init__(self, guid=None, lib=None, handle=None,
+    _cam = None
+    _context = None
+
+    def __init__(self, guid=None, context=None, handle=None,
             isospeed=None, mode=None, rate=None, **features):
         """
         Obtain a camera object either supplying:
@@ -879,34 +973,38 @@ class Camera(object):
         * nothing: the first available camera on the system will be
           chosen.
         * a GUID: the camera with this specific GUID (an integer,
-          use `int(string_hey_guid, 16)` to convert)
+          use ``int(hex_guid_as_string, 16)`` to convert)
         * a handle obtained from :meth:`Context.camera_handle`
         
-        The :class:`Context` can be supplied. Its context will be
-        used to obtain the camera handle. If no library is supplied, a
-        new one will be created.
+        The :class:`Context` can be supplied. It will be used to obtain
+        the camera handle. If no context is supplied, a new one will be
+        created and maintained.
 
-        Additionally the video :attr:`mode`, the :attr:`isospeed` and
-        the :attr:`rate` as well as arbitrary :attr:`features` of the
-        camera can be set here. The supplied features are set in
-        undefined order!
+        The camera's settings and modes are left unchanged unless 
+        the video :attr:`mode`, the :attr:`isospeed`, and
+        the frame :attr:`rate` are give. Additionally, arbitrary
+        :attr:`features` of the camera can be set. The supplied features
+        are set in undefined order.
         """
         
         if handle is None:
-            if lib is None:
-                lib = Context()
+            if context is None:
+                context = Context()
             if isinstance(guid, basestring):
                 guid, unit = int(guid, 16), None
             elif guid is None:
-                guid, unit = lib.cameras[0]
+                guid, unit = context.cameras[0]
             else:
                 unit = None
-            handle = lib.camera_handle(guid, unit)
+            handle = context.camera_handle(guid, unit)
         else:
-            assert lib is not None
-        self._lib = lib # _we_ need to ensure the dc1394 context is alive
+            assert context is not None
+        
+        # _we_ need to ensure the dc1394 context is alive
+        self._context = context
         self._cam = handle
 
+        # setup static attributes of the camera
         self._features = self._load_features()
         self._modes, self._modes_dict = self._load_modes()
 
@@ -923,67 +1021,77 @@ class Camera(object):
 
     def close(self):
         """
-        This function obviously frees a camera structure. It also deals
-        with system ressources like handles which are killed too.
+        Frees a camera structure.
         """
         if self._cam:
             _dll.dc1394_camera_free(self._cam)
         self._cam = None
-        # do not invalidate the library here
-        # someone else could be using it
-        # if self._lib:
-        #     self._lib.close()
-        self._lib = None
+        # do not invalidate the context here as someone else could be
+        # using it.
+        # if self._context:
+        #     self._context.close()
+        # only un-reference it so it can be freed if noone needs it anymore.
+        self._context = None
   
     def power(self, on=True):
         """
-        Sets the camera power. This is very close to (un)plugging the
-        camera power but note that there is a difference as some
-        circuits in the camera must be continuously powered in order to
-        respond to a power-up command. Unpowering the camera using this
-        attribute does not cause a re-enumeration and does not
-        invalidate the object. It can be used to enable power-saving and
-        to prevent the camera from heating up to much reasulting in less
-        noise.
+        Sets the camera power.
+        
+        This is very close to (un)plugging the camera power but note
+        that there is a difference as some circuits in the camera must
+        be continuously powered in order to respond to a power-up
+        command. Unpowering the camera using this attribute does not
+        cause a re-enumeration and does not invalidate the object or
+        change settings. It can be used to enable power-saving and to
+        prevent the camera from heating up to much thereby reducing the 
+        dark current and read-out noise.
         """
         _dll.dc1394_camera_set_power(self._cam, on)
 
     def reset_bus(self):
         """
         Reset the bus the camera is attached to causing re-enumeration
-        of all devices connected. Call :meth:`close` as the camera
-        handle is invalid afterwards.
+        of all devices connected.
+        
+        Call :meth:`close` as the camera handle is invalid afterwards.
         """
         _dll.dc1394_reset_bus(self._cam)
 
     def reset_camera(self):
         """
         Resets the camera causing it to forget some settings and to
-        re-enumerate. Call :meth:`close` after using this method.
+        re-enumerate.
+        
+        Call :meth:`close` after using this method as the camera handle
+        becomes invalid.
         """
         _dll.dc1394_camera_reset(self._cam)
 
     def memory_save(self, channel):
         """
-        This effectively saves the camera settings in the camera memory
-        bank specified by the channel argument. The number of available
-        channels is specified in :attr:`memory_channels`. You should
-        wait until the save operation if finished before changing camera
-        registers. You cannot write in channel zero as it is read-only
-        and contains factory defaults.
+        Saves the camera settings in the camera memory bank specified by
+        
+        the channel argument. The number of available channels is
+        specified in :attr:`memory_channels`. You should wait until the
+        save operation if finished before changing camera registers. You
+        cannot write in channel zero as it is read-only and contains
+        factory defaults.
         """
         _dll.dc1394_memory_save(self._cam, int(channel))
 
     def memory_load(self, channel):
         """
-        Loads the settings stored in the specified channel. Channel zero
-        is the factory defaults.
+        Loads the settings stored in the specified channel.
+        
+        Channel zero is the factory defaults.
         """
         _dll.dc1394_memory_load(self._cam, int(channel))
 
     @property
     def memory_busy(self):
         """
+        Checks for pending memory operations.
+
         You need to allow the camera some time to finish the saving
         operation. This function can be used in a loop to check when the
         operation finished. This could be integrated in the save
@@ -995,7 +1103,7 @@ class Camera(object):
 
     def flush(self):
         """
-        Flush all already acquired and transferred frames from the DMA
+        Flush already acquired and transferred frames from the DMA
         buffer.
         """
         frame = POINTER(video_frame_t)()
@@ -1012,11 +1120,11 @@ class Camera(object):
         Capture a frame.
 
         When capturing a frame you can choose to either wait for the
-        frame indefinitely (WAIT) or return immediately if no frame
-        arrived yet (POLL).
+        frame indefinitely (``poll=False``, the default) or return
+        ``None`` immediately if no frame arrived yet (``poll=True``).
 
-        If requested by `mark_corrupt` the returned :class:`Image` s have
-        their corruption flag determined.
+        If requested by ``mark_corrupt=True`` the returned
+        :class:`Image` s have their corruption flag set accordingly.
         """
         frame = POINTER(video_frame_t)()
         policy = poll and CAPTURE_POLICY_POLL or CAPTURE_POLICY_WAIT
@@ -1031,18 +1139,21 @@ class Camera(object):
         _dll.dc1394_capture_enqueue(self._cam, frame)
         return img
 
-    def start_capture(self, bufsize=4):
+    def start_capture(self, bufsize=4, capture_flags="DEFAULT"):
         """
         Setup the capture session.
 
-        bufsize is the number of images in the ring buffer. Thanks to
-        some hack you can even set this parameter to 1 but I recommend
-        four to 10. If you request too much memory (above 30M) there is
-        a chance that the function will fail.
+        ``bufsize`` is the number of images in the ring buffer. Thanks to
+        some hack you can even set this parameter to 1 but the
+        recommended value is between four to ten. If you request too much
+        memory (above 30M) there is a chance that the function will fail.
+
+        Use ``capture_flags`` to setup bandwidth and channel allocation
+        and to enable automatic start of iso transmission.
         """
         _dll.dc1394_capture_setup(
                 self._cam, bufsize,
-                capture_flag_codes_short["DEFAULT"])
+                capture_flag_codes_short[capture_flags])
 
     def stop_capture(self):
         """
@@ -1052,8 +1163,7 @@ class Camera(object):
 
     def start_video(self):
         """
-        Instruct the camera to start capturing and subsequently
-        transferring frames.
+        Instruct the camera to start capturing and transferring frames.
         """
         _dll.dc1394_video_set_transmission(self._cam, 1)
 
@@ -1077,7 +1187,7 @@ class Camera(object):
 
     def start_multi_shot(self, n):
         """
-        Instruct the camera to acquire and transfer `n` frames.
+        Instruct the camera to acquire and transfer ``n`` frames.
         """
         _dll.dc1394_video_set_multi_shot(self._cam, n, 1)
 
@@ -1090,9 +1200,9 @@ class Camera(object):
     @property
     def fileno(self):
         """
-        A file descriptor suitable for passing to select() to determine
-        whether and when new frames are available for reading without
-        delay.
+        A file descriptor suitable for passing to :func:`select.select`
+        to determine whether and when new frames are available for
+        reading.
 
         An alternative is to use the polling mode of :meth:`capture`.
         """
@@ -1117,25 +1227,26 @@ class Camera(object):
     @property
     def features(self):
         """
-        A list of all available features of the camera.
+        A list of all available features of the camera. Read-only.
         """
         return self._features
 
     def setup(self, active=True, mode="manual", absolute=True,
             **features):
         """
-        Setup feature of the camera in one call. Pass all features and
-        the values to set as additional keyword arguments. By default
-        the specified features are activated, set to "manual" and
-        "absolute" mode.
+        Setup several features of the camera in one call.
+        
+        Pass all features and the values to set as additional keyword
+        arguments. By default the specified features are activated, set
+        to ``manual`` and ``absolute`` mode.
         """
         for k, v in features.items():
             self.features[k].setup(v, active, mode, absolute)
 
     def _load_modes(self):
         """
-        Return a list and a dictionary of all supported modes of the
-        camera.
+        Obtain and return a list and a dictionary of all supported modes
+        of the camera.
         """
         modes = video_modes_t()
         _dll.dc1394_video_get_supported_modes(self._cam, byref(modes))
@@ -1147,13 +1258,20 @@ class Camera(object):
     @property
     def modes(self):
         """
-        A list of modes supported by this camera.
+        A list of modes supported by this camera. Read-only.
         """
         return self._modes
 
+    @property
+    def modes_dict(self):
+        """
+        A dictionary of modes supported by this camera. Read-only.
+        """
+        return self._modes_dict
+
     def get_register(self, offset):
         """
-        Returns the current value of the register at address `offset`.
+        Returns the current value of the register at address ``offset``.
         """
         val = c_uint32()
         _dll.dc1394_get_control_registers(
@@ -1162,12 +1280,13 @@ class Camera(object):
 
     def set_register(self, offset, value):
         """
-        Set the register at `offset` to `value`.
+        Set the register at ``offset`` to ``value``.
         """
         val = c_uint32(value)
         _dll.dc1394_set_control_registers(
                 self._cam, offset, byref(val), 1)
 
+    # shortcuts for getting and setting registers
     __getitem__ = get_register
     __setitem__ = set_register
 
@@ -1210,7 +1329,9 @@ class Camera(object):
     @property
     def guid(self):
         """
-        The GUID of the camera.
+        The (integer) GUID of the camera.
+        
+        Use ``hex(cam.guid)`` to get a hexadecimal string.
         """
         return self._cam.contents.guid
 
@@ -1224,16 +1345,19 @@ class Camera(object):
     @property
     def mode(self):
         """
+        The current video mode of the camera.
+
         The video modes are what let you choose the image size and color
-        format. Two special format classes exist: the EXIF mode (which
-        is actually not supported by any known camera) and Format_7
-        which is the scalable image format. Format_7 allows you to
-        change the image size, framerate, color coding and crop region.
+        format. Two special format classes exist: the :class:`Exif`
+        mode (which is actually not supported by any known camera)
+        and :class:`Format7` which is the scalable image format.
+        Format7 allows you to change the image size, framerate, color
+        coding and crop region.
+
         Important note: your camera will not support all the video modes
-        below but will only supports a more or less limited subset of
-        them.
-        Use :attr:`modes` to obtain a list of valid modes for this
-        camera.
+        but will only supports a more or less limited subset of them.
+
+        Use :attr:`modes` to obtain a list of valid modes for this camera.
         """
         vmod = video_mode_t()
         _dll.dc1394_video_get_mode(self._cam, byref(vmod))
@@ -1247,18 +1371,20 @@ class Camera(object):
     def rate(self):
         """
         The framerate belonging to the current camera mode.
-        For not scalable video formats there is a set of
-        standard frame rates one can choose from.
+
+        For non-scalable video formats (not :class:`Format7`) there is
+        a set of standard frame rates one can choose from.
 
         Framerates are used with fixed-size image formats (Format_0 to
         Format_2).  Note that you may also be able to set the framerate
-        with the :attr:`framerate` feature.  In FORMAT7 format the
+        with the :attr:`framerate` feature.  In :class:`Format7` modes the
         camera can tell an actual value, but one can not set it.
         Unfortunately the returned framerate may have no sense at all.
         If you use Format_7 you should set the framerate by adjusting
-        the number of bytes per packet. A list of all the framerates
-        supported by your camera for a specific video mode can be
-        obtained with :attr:`mode.rates`.
+        the number of bytes per packet.
+        
+        A list of all the framerates supported by your camera for a specific
+        video mode can be obtained via :attr:`mode.rates`.
         """
         ft = framerate_t()
         _dll.dc1394_video_get_framerate(self._cam, byref(ft))
@@ -1287,6 +1413,8 @@ class Camera(object):
     @property
     def operation_mode(self):
         """
+        IEEE1394 legacy or IEEE1394b operation mode.
+
         As the IEEE1394 speeds were increased with IEEE-1394b
         specifications, a new type of control is necessary when the
         camera is operating in iso speeds over 800Mbps. If you wish to
@@ -1304,7 +1432,7 @@ class Camera(object):
 
     def get_strobe(self, offset):
         """
-        Get the value of the strobe configuration register at `offset`.
+        The value of the strobe configuration register at ``offset``.
         """
         k = c_uint32()
         _dll.dc1394_get_strobe_register(self._cam, offset, byref(k))
@@ -1312,6 +1440,6 @@ class Camera(object):
 
     def set_strobe(self, offset, value):
         """
-        Set the strobe configuration register at `offset` to `value`.
+        Set the strobe configuration register at ``offset`` to ``value``.
         """
         _dll.dc1394_set_strobe_register(self._cam, offset, value)
