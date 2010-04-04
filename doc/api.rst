@@ -25,6 +25,14 @@ The :mod:`pydc1394.camera2` Module
    :undoc-members:
 
 
+The :mod:`pydc1394.frame` Module
+--------------------------
+
+.. automodule:: pydc1394.frame
+   :members:
+   :undoc-members:
+
+
 The :mod:`pydc1394.cmdline` Module
 --------------------------
 

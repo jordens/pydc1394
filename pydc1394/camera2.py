@@ -21,9 +21,9 @@
 
 from pydc1394._dc1394core import *
 from pydc1394._dc1394core import _dll
-from ctypes import c_byte, c_int, c_uint32, c_int32, c_float
+from pydc1394.frame import Frame
+from ctypes import c_int, c_uint32, c_int32, c_float
 
-from numpy import frombuffer, ndarray
 
 
 class Context(object):
@@ -106,46 +106,6 @@ class Context(object):
         """
         handle = self.camera_handle(guid, unit)
         return Camera(context=self, handle=handle, **kwargs)
-
-
-class Image(ndarray):
-    """
-    A numpy ndarray for an dc1394 frame
-    """
-    frame_id = None
-    frames_behind = None
-    packet_size = None
-    position = None
-    packets_per_frame = None
-    timestampe = None
-    video_mode = None
-    data_depth = None
-    timestamp = None
-    corrupt = None
-
-    @classmethod
-    def from_frame(cls, frame):
-        """
-        Convert a dc1394 frame into an Image instance.
-
-        All metadata are retained as attributes of the resulting image.
-        """
-        dtyp = ARRAY(c_byte, frame.contents.image_bytes)
-        buf = dtyp.from_address(frame.contents.image)
-        pixs = frame.contents.size[0]*frame.contents.size[1]
-        end = frame.contents.little_endian and "<" or ">"
-        typ_str = "%su%i" % (end, frame.contents.image_bytes/pixs)
-        img = frombuffer(buf, dtype=typ_str)
-        img = img.reshape(frame.contents.size[::-1]).copy().view(cls)
-        img.frame_id = frame.contents.id
-        img.frames_behind = frame.contents.frames_behind
-        img.position = frame.contents.position
-        img.packet_size = frame.contents.packet_size
-        img.packets_per_frame = frame.contents.packets_per_frame
-        img.timestamp = frame.contents.timestamp
-        img.video_mode = video_mode_vals[frame.contents.video_mode]
-        img.data_depth = frame.contents.data_depth
-        return img
 
 
 class Feature(object):
@@ -1124,7 +1084,8 @@ class Camera(object):
         ``None`` immediately if no frame arrived yet (``poll=True``).
 
         If requested by ``mark_corrupt=True`` the returned
-        :class:`Image` s have their corruption flag set accordingly.
+        :class:`pydc1394.frame.Frame` has its corruption flag
+        set accordingly.
         """
         frame = POINTER(video_frame_t)()
         policy = poll and CAPTURE_POLICY_POLL or CAPTURE_POLICY_WAIT
@@ -1132,7 +1093,7 @@ class Camera(object):
                 policy, byref(frame))
         if not bool(frame):
             return
-        img = Image.from_frame(frame)
+        img = Frame.from_dc1394(frame)
         if mark_corrupt:
             img._corrupt = bool(_dll.dc1394_capture_is_frame_corrupt(
                     self._cam, frame))
