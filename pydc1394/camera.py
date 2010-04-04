@@ -122,37 +122,168 @@ class Image(ndarray):
     augments the information from numpy through information of the acquisition
     of this image.
     """
-    @property
-    def position(self):
-        "ROI position (offset)"
-        return self._position
-    @property
-    def packet_size(self):
-        "The size of a datapacket in bytes."
-        return self._packet_size
-    @property
-    def packets_per_frame(self):
-        "Number of packets per frame."
-        return self._packets_per_frame
-    @property
-    def timestamp(self):
-        "The IEEE Bustime when the picture was acquired (microseconds)"
-        return self._timestamp
-    @property
-    def frames_behind(self):
+
+    def __new__(cls, camera=None, frame=None): 
+        """ Create an Image instance from a grabbed frame.
+            This is a constructor needed to be a subclass of ndarray. Here
+            we collect parameters only, no defaults.
+
+            Parameters:
+            cls:    subclass
+            camera: camera instance
+            frame:  image frame collected by the camera
         """
-        The number of frames in the ring buffer that are yet to be accessed
-        by the user
+        fr = frame.contents
+        #get the buffer from the frame (this is part of the ring buffer):
+        Dtype = c_char*fr.image_bytes
+        buf = Dtype.from_address(fr.image)
+
+        size = fr.size
+
+        if fr.data_depth == 8:
+            dtype = 'u1'
+        elif fr.data_depth == 16:
+            if fr.little_endian:
+                dtype = '<u2'
+            else:
+                dtype = '>u2'
+            #end if endianness
+        #end if depth
+
+        #convert the data:
+        img0 = fromstring(buf, dtype=dtype)
+        img = ndarray.__new__(cls,shape=size, dtype=dtype,buffer=img0)
+
+        #inherit the attributes:
+        img.position = fr.position
+        img.color_coding = fr.color_coding
+
+        img.color_filter = fr.color_filter
+        img.yuv_byte_order = fr.yuv_byte_order
+        img.stride = fr.stride
+        #img.video_mode dropped
+        img.packet_size = fr.packet_size
+        img.packets_per_frame = fr.packets_per_frame
+        img.timestamp = fr.timestamp
+        img.frames_behind = fr.frames_behind
+        img.id = fr.id
+        img.data_depth = fr.data_depth
+
+        #the camera object used to capture this image:
+        img._cam = camera
+        return img
+    #end __new__
+
+    def __array_finalize__(self, img):
+        """ Finalize the new Image class array:
+            if called with an image object at the end, inherit 
+            the properties of that image.
         """
-        return self._frames_behind
+        if img != None:
+            self.position = getattr(img, 'position', -1)
+            self.color_coding = getattr(img, 'color_coding', -1)
+
+            self.color_filter = getattr( img, 'color_filter', -1)
+            self.yuv_byte_order = getattr( img, 'yuv_byte_order', -1)
+            self.stride = getattr( img, 'stride', -1)
+            #self.video_mode dropped
+            self.packet_size = getattr(img, 'packet_size', -1)
+            self.packets_per_frame =  getattr( img, 'packets_per_frame', -1)
+            self.timestamp = getattr( img, 'timestamp', -1)
+            self.frames_behind = getattr(img, 'frames_behind', -1)
+            self.id = getattr(img, 'id', -1)
+            self.data_depth = getattr(img, 'data_depth', 8)
+            self._cam = getattr(img, '_cam', None)
+        #end if
+    #end of __array_finalize_
+
+    def __array_wrap__(self, res, context=None):
+        """ to inherit the extra properties after an ufunc call """
+        # ndarray.__array_wrap__ will call the __array_finalize__ to get
+        #the attributes right
+        return ndarray.__array_wrap__(self, res, context)
+    #end of __array_wrap__
+
     @property
-    def id(self):
-        "the frame position in the ring buffer"
-        return self._id
-    @property
-    def corrupt(self):
-        "corrupt image marker (marked by libdc1394)"
-        return self._corrupt
+    def color_coding_name(self):
+        if color_coding_vals.has_key( self.color_coding):
+            return color_coding_vals[ self.color_coding ]
+        else:
+            return "unknown"
+
+
+    def as_RGB(self):
+        """ Convert the image to an RGB image. Returns a numpy array containing
+            an RGB image. (For example for display purposes)
+            Array shape is: image.shape[0], image.shape[1], 3
+            
+            Uses the dc1394_convert_to_RGB() function for the conversion.
+        """
+        if self._cam == None:
+            print "Can not convert without the camera isntance"
+            return None
+        #end if
+
+        res = ndarray( 3*self.size, dtype='u1')
+        shape = self.shape
+        inp = ndarray( shape=len(self.data), buffer=self.data, dtype='u1')
+
+        self._cam._dll.dc1394_convert_to_RGB8( inp, res, 
+                shape[1], shape[0], self.yuv_byte_order,
+                self.color_coding, self.data_depth)
+        
+        res.shape = (shape[0],shape[1],3)
+
+        return res
+    #end of as_RGB
+    
+    def as_MONO8(self):
+        """ Convert he image to gray scale 8 bit. Returns a numpy array
+            containing the image data.    
+            
+            Uses the dc1394_convert_to_MONO8() funciton
+        """
+        if self._cam == None:
+            print "Conversion needs an opened camera instance"
+            return None
+        #end if
+
+        res = ndarray( self.size, dtype='u1')
+        shape = self.shape
+        inp = ndarray( shape = len(self.data), buffer=self.data, dtype='u1')
+
+        self._cam._dll.dc1394_convert_to_MONO8( inp, res,
+                shape[1], shape[0], self.color_coding, self.yuv_byte_order,
+                self.color_coding, self.data_depth)
+        res.shape = shape
+
+        return res
+    #end of as_MONO8
+
+    def as_YUV422(self):
+        """ Convert he image to YUV422 color format. 
+            Returns a numpy array containing the image data.
+            (this function is here for completeness. Numpy arrays
+            may not be optimal for such image types.)
+            
+            Uses the dc1394_convert_to_YUV422() funciton
+        """
+        if self._cam == None:
+            print "Conversion needs a camera instance "
+            return None
+
+        res = ndarray( self.size, dtype='u1')
+        shape = self.shape
+        inp = ndarray( shape = len(self.data), buffer=self.data, dtype='u1')
+        
+        self._cam._dll.dc1394_convert_to_YUV422( inp, res,
+                shape[1], shape[0], self.color_coding, self.yuv_byte_order,
+                self.color_coding, self.data_depth)
+
+        #I am not sure abuot this, it has to be tested:
+        return ndarray(shape=shape, buffer=res.data, dtype='u2')
+
+#end of Image class
 
 class _CamAcquisitonThread(Thread):
     def __init__(self,cam, condition ):
@@ -590,25 +721,16 @@ class Camera(object):
                 policy, byref(frame))
         if not bool(frame):
             return
-        #get the buffer from the frame (this is part of the ring buffer):
-        dtyp = c_char*frame.contents.image_bytes
-        buf = dtyp.from_address(frame.contents.image)
-        #generate an Image class from the buffer:
-        img = fromstring(buf, dtype=self._dtype).reshape(
-                self._shape).view(Image)
-        #enqueue the buffer since fromstring copies data
-        self._dll.dc1394_capture_enqueue(self._cam,
-                frame)
-        img._position = frame.contents.position
-        img._packet_size = frame.contents.packet_size
-        img._packets_per_frame = frame.contents.packets_per_frame
-        img._timestamp = frame.contents.timestamp
-        img._frames_behind = frame.contents.frames_behind
-        img._id = frame.contents.id
-        img._corrupt = bool(self._dll.dc1394_capture_is_frame_corrupt(
+        # generate an Image class from the frame
+        # all copy/inheritance is handled there:
+        img = Image(self._cam, frame)
+        img.corrupt = bool(self._dll.dc1394_capture_is_frame_corrupt(
                 self._cam, frame))
-        # self._current_img = img
+        # enqueue the buffer since fromstring in Image.__new__
+        # copies data
+        self._dll.dc1394_capture_enqueue(self._cam, frame)
         return img
+
 
     def start_capture(self, bufsize=4):
         self._dll.dc1394_capture_setup( self._cam, bufsize, \
@@ -1097,7 +1219,8 @@ class Camera(object):
                         hsize, vsize)
 
                 #delegate this to the shape of the image:
-                self._shape = [ int(hsize.value) , int(vsize.value) ]
+                #an array is indexed vertically then horizontally
+                self._shape = [ int(vsize.value) , int(hsize.value) ]
 
                 #a descriptive text of color coding:
                 ccval = color_coding_vals[ cc.value ]
