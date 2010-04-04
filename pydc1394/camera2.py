@@ -70,7 +70,11 @@ class Context(object):
 
         Each item contains the GUID of the camera and the unit number.
         Pass a (GUID, unit) tuple of the list to camera_handle() to
-        obtain a handle.
+        obtain a handle. Since a single camera can contain several
+        functional units (think stereo cameras), the GUID is not enough
+        to identify an IIDC camera.
+        
+        If present, multiple cards will be probed.
         """
         cam_list = POINTER(camera_list_t)()
         _dll.dc1394_camera_enumerate(self._handle, byref(cam_list))
@@ -117,7 +121,7 @@ class Feature(object):
     number of image parameters that can be tuned like exposure, white
     balance, etc... Features are adjusted with a number of specific
     methods. The name of each feature is relatively easy to understand.
-    The only trick is that the EXPOSURE feature is actually an AUTO
+    The only trick is that the ``exposure`` feature is actually an auto
     exposure function. Its behaviour depends on the manufacturer.
 
     A feature can be activated or deactived via the :attr:`active`
@@ -131,7 +135,7 @@ class Feature(object):
     :attr:`absolute_capable` and whether it is in
     :attr:`absolute_control`. The non-absolute value is an integer with
     a meaning that may be internal to the camera and vendor specific.
-    Units of :attr:`absolute`?
+    FIXME: What are the units of :attr:`absolute`?
 
     The absolute value must be in the :attr:`absolute_range`
     and the internal value must be in :attr:`value_range`.
@@ -374,26 +378,23 @@ class Trigger(Feature):
         a meaning specified in the IIDC specifications.
 
         * Mode 0: Exposure starts with a falling edge and stops when the
-          the exposure specified by the SHUTTER feature is elapsed.
+          the exposure specified by the ``shutter`` feature is elapsed.
         * Mode 1: Exposure starts with a falling edge and stops with the
           next rising edge.
         * Mode 2: The camera starts the exposure at the first falling
-          edge and stops the integration at the nth falling edge. The
-          parameter n is a prameter of the trigger that can be set with
-          dc1394_feature_set_value().
+          edge and stops the integration at the ``n`` th falling edge. The
+          parameter ``n`` is a prameter of the trigger that can be set with
+          :attr:`value`.
         * Mode 3: This is an internal trigger mode. The trigger is
-          generated every n*(period of fastest framerate). Once again, the
-          parameter n can be set with dc1394_feature_set_value().
-        * Mode 4: A multiple exposure mode. N exposures are performed
+          generated every ``n``*(period of fastest framerate). Once again,
+          the parameter ``n`` can be set with attr:`value`.
+        * Mode 4: A multiple exposure mode. ``n`` exposures are performed
           each time a falling edge is observed on the trigger signal. Each
-          exposure is as long as defined by the SHUTTER feature.
+          exposure is as long as defined by the ``shutter`` feature.
         * Mode 5: Another multiple exposure mode. Same as Mode 4 except
           that the exposure is is defined by the length of the trigger
-          pulse instead of the SHUTTER feature.
-        * Mode 14 and 15: vendor specified trigger mode. 
-        
-        (Note: Your camera may support the inversion of the the polarity
-        of the trigger signal.) 
+          pulse instead of the ``shutter`` feature.
+        * Mode 14 and 15: both are vendor specified trigger modes. 
         """
         finfo = feature_info_t()
         finfo.id = self._feature_id
@@ -425,7 +426,7 @@ class Trigger(Feature):
     @property
     def polarity_capable(self):
         """
-        Can the polarity of the trigger input be set?
+        Can the polarity of the trigger input be set/inverted?
         """
         finfo = feature_info_t()
         finfo.id = self._feature_id
@@ -437,7 +438,7 @@ class Trigger(Feature):
         """
         The current active polarity for the trigger input.
 
-        Either ACTIVE_LOW or ACTIVE_HIGH.
+        Either ``"ACTIVE_LOW"`` or ``"ACTIVE_HIGH"``.
         """
         pol = trigger_polarity_t()
         _dll.dc1394_external_trigger_get_polarity(
@@ -580,7 +581,8 @@ class Mode(object):
     @property
     def name(self):
         """
-        A descriptive name for this mode. Like 640x480_Y8 or FORMAT7_2
+        A descriptive name for this mode. Like ``"640x480_Y8"`` or
+        ``"FORMAT7_2"``
         """
         return video_mode_vals[self._mode_id]
 
@@ -642,7 +644,7 @@ class Format7(Mode):
     :attr:`color_codings`, and :attr:`data_depth` to obtain information
     about the mode and then set its parameters via the attributes 
     :attr:`size`, :attr:`position`, :attr:`color_coding`, and
-    :attr:`byte_per_packet` or all of them via the :attr:`roi` attribute
+    :attr:`packet_size` or all of them via the :attr:`roi` attribute
     or with a call to :meth:`setup`.
 
     All settings are sent to the hardware right away.
@@ -654,7 +656,8 @@ class Format7(Mode):
         The current frame interval in this format7 mode in seconds.
         
         This attribute is read-only. Use the :attr:`Camera.framerate` and
-        :attr:`Camera.shutter` features to influence the framerate.
+        :attr:`Camera.shutter` features (if present) to influence the
+        framerate.
         """
         fi = c_float()
         _dll.dc1394_format7_get_frame_interval(self._cam,
@@ -677,6 +680,9 @@ class Format7(Mode):
     def size(self):
         """
         The current size (horizontal and vertical) of the ROI in pixels.
+
+        The image size can only be a multiple of the :attr:`unit_size`, and
+        cannot be smaller than it.
         """
         hsize = c_uint32()
         vsize = c_uint32()
@@ -696,6 +702,9 @@ class Format7(Mode):
         """
         The start position of the upper left corner of the ROI in
         pixels (horizontal and vertical).
+
+        The image position can only be a multiple of the unit position
+        (zero is acceptable).
         """
         x = c_uint32()
         y = c_uint32()
@@ -741,9 +750,7 @@ class Format7(Mode):
     @property
     def unit_position(self):
         """
-        Horizontal and vertical position multiples.
-        
-        See also :attr:`position`.
+        Horizontal and vertical :attr:`position` multiples.
         """
         h_unit = c_uint32()
         v_unit = c_uint32()
@@ -755,9 +762,7 @@ class Format7(Mode):
     @property
     def unit_size(self):
         """
-        Horizontal and vertical size multiples.
-        
-        See also :attr:`size`.
+        Horizontal and vertical :attr:`size` multiples.
         """
         h_unit = c_uint32()
         v_unit = c_uint32()
@@ -771,81 +776,86 @@ class Format7(Mode):
         """
         Get and set all Format7 parameters at once.
 
-        The following definitions can be used to set ROI of Format_7 in
+        The following definitions can be used to set ROI of Format7 in
         a simpler fashion:
         
-        * QUERY_FROM_CAMERA will use the current value used by the camera,
-        * USE_MAX_AVAIL will set the value to its maximum and
-        * USE_RECOMMENDED can be used for the bytes-per-packet setting.
+        * -1=QUERY_FROM_CAMERA will use the current value used by the camera,
+        * -2=USE_MAX_AVAIL will set the value to its maximum and
+        * -3=USE_RECOMMENDED can be used for the bytes-per-packet setting.
         """
         w, h, x, y = c_int32(), c_int32(), c_int32(), c_int32()
-        cco, bpp = color_coding_t(), c_int32()
+        cco, packet_size = color_coding_t(), c_int32()
         _dll.dc1394_format7_get_roi(
-            self._cam, self._mode_id, byref(cco), byref(bpp),
+            self._cam, self._mode_id, byref(cco), byref(packet_size),
             byref(x), byref(y), byref(w), byref(h))
         return ((w.value, h.value), (x.value, y.value),
-            color_coding_vals[cco.value], bpp.value)
+            color_coding_vals[cco.value], packet_size.value)
 
     @roi.setter
     def roi(self, args):
-        size, position, color, bpp = args
+        size, position, color, packet_size = args
         _dll.dc1394_format7_set_roi(
             self._cam, self._mode_id, color_coding_codes[color],
-            bpp, position[0], position[1], size[0], size[1])
+            packet_size, position[0], position[1], size[0], size[1])
 
     @property
-    def recommended_byte_per_packet(self):
+    def recommended_packet_size(self):
         """
         Recommended number of bytes per packet.
         """
-        bpp = c_uint32()
-        _dll.dc1394_format7_get_recommended_byte_per_packet(
-            self._cam, self._mode_id, byref(bpp))
-        return bpp.value
+        packet_size = c_uint32()
+        _dll.dc1394_format7_get_recommended_packet_size(
+            self._cam, self._mode_id, byref(packet_size))
+        return packet_size.value
 
     @property
-    def packet_para(self):
+    def packet_parameters(self):
         """
-        Minimum and maximum number of bytes per packet.
+        Maximum number and unit size of bytes per packet.
+
+        Get the parameters of the packet size: its maximal size and its
+        unit size. The packet size is always a multiple of the unit
+        bytes and cannot be zero.
         """
-        bpp_min = c_uint32()
-        bpp_max = c_uint32()
-        _dll.dc1394_format7_get_packet_para(
-            self._cam, self._mode_id, byref(bpp_min), byref(bpp_max))
-        return bpp_min.value, bpp_max.value
+        packet_size_max = c_uint32()
+        packet_size_unit = c_uint32()
+        _dll.dc1394_format7_get_packet_parameters(
+            self._cam, self._mode_id, byref(packet_size_unit),
+            byref(packet_size_max))
+        return packet_size_unit.value, packet_size_max.value
 
     @property
-    def byte_per_packet(self):
+    def packet_size(self):
         """
         Current number of bytes per packet.
         """
-        bpp = c_uint32()
-        _dll.dc1394_format7_get_byte_per_packet(
-            self._cam, self._mode_id, byref(bpp))
-        return bpp.value
+        packet_size = c_uint32()
+        _dll.dc1394_format7_get_packet_size(
+            self._cam, self._mode_id, byref(packet_size))
+        return packet_size.value
 
-    @byte_per_packet.setter
-    def byte_per_packet(self, bpp):
-        _dll.dc1394_format7_set_byte_per_packet(
-            self._cam, self._mode_id, int(bpp))
+    @packet_size.setter
+    def packet_size(self, packet_size):
+        _dll.dc1394_format7_set_packet_size(
+            self._cam, self._mode_id, int(packet_size))
 
     @property
-    def packet_per_frame(self):
+    def total_bytes(self):
         """
-        Current number of packets per frame.
+        Current total number of bytes per frame. 
 
-        packet_per_frame is read-only. Use :attr:`byte_per_packet`
-        to influence its value.
+        This includes padding (to reach an entire number of packets).
+        Use :attr:`packet_size` to influence its value.
         """
         ppf = c_uint32()
-        _dll.dc1394_format7_get_packet_per_frame(
+        _dll.dc1394_format7_get_total_bytes(
             self._cam, self._mode_id, byref(ppf))
         return ppf.value
 
     @property
     def data_depth(self):
         """
-        The number of bits per pixel.
+        The number of bits per pixel. Need not be a multiple of 8.
         """
         dd = c_uint32()
         _dll.dc1394_format7_get_data_depth(
@@ -864,20 +874,20 @@ class Format7(Mode):
 
     def setup(self, size=(QUERY_FROM_CAMERA, QUERY_FROM_CAMERA),
             offset=(QUERY_FROM_CAMERA, QUERY_FROM_CAMERA),
-            color=QUERY_FROM_CAMERA, bpp=USE_RECOMMENDED):
+            color=QUERY_FROM_CAMERA, packet_size=USE_RECOMMENDED):
         """
         Setup this Format7 mode.
         
         Similar to setting :attr:`roi` but size and offset are made
         multiples of :attr:`unit_size` and :attr:`unit_position`. All
         arguments are optional and default to not changing the current
-        value. :attr:`byte_per_packet` is set to the recommended value.
+        value. :attr:`packet_size` is set to the recommended value.
         """
         wu, hu = self.unit_size
         xu, yu = self.unit_position
         position = xu*int(offset[0]/xu), yu*int(offset[1]/yu)
         size = wu*int(size[0]/wu), hu*int(size[1]/hu)
-        self.roi = size, position, color, bpp
+        self.roi = size, position, color, packet_size
         return self.roi
 
 
@@ -919,7 +929,7 @@ _mode_map = {
 
 class Camera(object):
     """
-    This class represents a IEEE1394 Camera on the bus.
+    This class represents a DC1394 Camera on the bus.
     """
 
     _cam = None
@@ -1010,8 +1020,14 @@ class Camera(object):
 
     def reset_bus(self):
         """
-        Reset the bus the camera is attached to causing re-enumeration
-        of all devices connected.
+        Resets the IEEE1394 bus which camera is attached to.
+        
+        Calling this function is "rude" to other devices because it
+        causes them to re-enumerate on the bus and may cause a temporary
+        disruption in their current activities.  Thus, use it sparingly.
+        Its primary use is if a program shuts down uncleanly and needs
+        to free leftover ISO channels or bandwidth.  A bus reset will
+        free those things as a side effect.
         
         Call :meth:`close` as the camera handle is invalid afterwards.
         """
@@ -1020,7 +1036,7 @@ class Camera(object):
     def reset_camera(self):
         """
         Resets the camera causing it to forget some settings and to
-        re-enumerate.
+        re-enumerate (?).
         
         Call :meth:`close` after using this method as the camera handle
         becomes invalid.
@@ -1030,12 +1046,18 @@ class Camera(object):
     def memory_save(self, channel):
         """
         Saves the camera settings in the camera memory bank specified by
+        the channel argument.
         
-        the channel argument. The number of available channels is
-        specified in :attr:`memory_channels`. You should wait until the
+        The number of available channels is
+        available from in :attr:`memory_channels`. You should wait until the
         save operation if finished before changing camera registers. You
         cannot write in channel zero as it is read-only and contains
         factory defaults.
+
+        .. note::
+           This operation can only be performed a certain number
+           of times for a given camera, as it requires reprogramming of an
+           EEPROM.
         """
         _dll.dc1394_memory_save(self._cam, int(channel))
 
@@ -1064,7 +1086,8 @@ class Camera(object):
     def flush(self):
         """
         Flush already acquired and transferred frames from the DMA
-        buffer.
+        buffer. These old frames would otherwise be returned by
+        :meth:`dequeue`.
         """
         frame = POINTER(video_frame_t)()
         while True:
@@ -1075,7 +1098,7 @@ class Camera(object):
             _dll.dc1394_capture_enqueue(self._cam,
                     frame)
 
-    def capture(self, poll=False, mark_corrupt=False):
+    def dequeue(self, poll=False, mark_corrupt=False):
         """
         Capture a frame.
 
@@ -1083,9 +1106,8 @@ class Camera(object):
         frame indefinitely (``poll=False``, the default) or return
         ``None`` immediately if no frame arrived yet (``poll=True``).
 
-        If requested by ``mark_corrupt=True`` the returned
-        :class:`pydc1394.frame.Frame` has its corruption flag
-        set accordingly.
+        Release the returned frame as soon as possible via
+        :meth:`enqueue` to return it to the DMA buffer and recycle it.
         """
         frame = POINTER(video_frame_t)()
         policy = poll and CAPTURE_POLICY_POLL or CAPTURE_POLICY_WAIT
@@ -1093,13 +1115,36 @@ class Camera(object):
                 policy, byref(frame))
         if not bool(frame):
             return
-        img = Frame.from_dc1394(frame)
-        if mark_corrupt:
-            img._corrupt = bool(_dll.dc1394_capture_is_frame_corrupt(
-                    self._cam, frame))
-        _dll.dc1394_capture_enqueue(self._cam, frame)
-        return img
+        return Frame(frame)
 
+    def enqueue(self, frame):
+        """
+        Returns a frame to the ring buffer once it has been used.
+        """
+        if frame._frame and frame.base is None:
+            _dll.dc1394_capture_enqueue(self._cam, frame._frame)
+            frame._frame = None
+
+    def corrupt(self, frame):
+        """
+        Is this frame corrupted?
+
+        Returns ``True`` if the given frame has been detected to be
+        corrupt (missing data, corrupted data, overrun buffer, etc.) and
+        ``False`` otherwise.  
+        
+        .. note::
+           Certain types of corruption may go undetected in which case
+           ``False`` will be returned erroneously.  The ability to
+           detect corruption also varies between platforms.
+        
+        .. note::
+           Corrupt frames still need to be enqueued with :meth:`enqueue`
+           when no longer needed by the user.
+        """
+        return bool(_dll.dc1394_capture_is_frame_corrupt(
+                    self._cam, frame._frame))
+   
     def start_capture(self, bufsize=4, capture_flags="DEFAULT"):
         """
         Setup the capture session.
@@ -1165,7 +1210,8 @@ class Camera(object):
         to determine whether and when new frames are available for
         reading.
 
-        An alternative is to use the polling mode of :meth:`capture`.
+        An alternative to blocking access with ``select()``
+        is to use the polling mode of :meth:`dequeue`.
         """
         return _dll.dc1394_capture_get_fileno(self._cam)
 
@@ -1265,12 +1311,13 @@ class Camera(object):
         broadcast commands at all. Also, this only works with cameras on
         the SAME bus (IOW, the same port).
 
-        Note:   that behaviour might be strange if one camera tries to
-                broadcast and another not.
+        .. note::
+           The behaviour might be strange if one camera tries to
+           broadcast and another not.
 
-        Note 2: that this feature is currently only supported under linux
-                and I have not seen it working yet though I tried it with
-                cameras that should support it. So use on your own risk!
+        .. note::
+           This feature is currently only supported under linux
+           and has not been seen working yet. So use on your own risk.
         """
         k = bool_t()
         _dll.dc1394_camera_get_broadcast(self._cam, byref(k))
@@ -1337,7 +1384,7 @@ class Camera(object):
         a set of standard frame rates one can choose from.
 
         Framerates are used with fixed-size image formats (Format_0 to
-        Format_2).  Note that you may also be able to set the framerate
+        Format_2). Note that you may also be able to set the framerate
         with the :attr:`framerate` feature.  In :class:`Format7` modes the
         camera can tell an actual value, but one can not set it.
         Unfortunately the returned framerate may have no sense at all.
@@ -1345,7 +1392,7 @@ class Camera(object):
         the number of bytes per packet.
         
         A list of all the framerates supported by your camera for a specific
-        video mode can be obtained via :attr:`mode.rates`.
+        video mode can be obtained from :attr:`mode` via :attr:`Mode.rates`.
         """
         ft = framerate_t()
         _dll.dc1394_video_get_framerate(self._cam, byref(ft))
@@ -1360,6 +1407,13 @@ class Camera(object):
     def isospeed(self):
         """
         The isochronous speed at which the transmission should occur.
+
+        Most (if not all) cameras are compatible with 400Mbps speed.
+        Only older cameras (pre-1999) may still only work at sub-400
+        speeds. However, speeds lower than 400Mbps are still useful:
+        they can be used for longer distances (e.g. 10m cables).  Speeds
+        over 400Mbps are only available in "B" mode (see
+        :attr:`operation_mode`).
         """
         sp = speed_t()
         _dll.dc1394_video_get_iso_speed(self._cam, byref(sp))
@@ -1376,7 +1430,7 @@ class Camera(object):
         """
         IEEE1394 legacy or IEEE1394b operation mode.
 
-        As the IEEE1394 speeds were increased with IEEE-1394b
+        As the IEEE1394 speeds were increased with IEEE1394b
         specifications, a new type of control is necessary when the
         camera is operating in iso speeds over 800Mbps. If you wish to
         use a 1394b camera you may need to switch the operation mode to
