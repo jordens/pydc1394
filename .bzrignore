@@ -1,3 +1,4 @@
 .bzr-repo
 ./*.egg-info
 .git*
+./doc/_build/*
