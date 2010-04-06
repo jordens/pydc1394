@@ -19,7 +19,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA  02110-1301  USA
 
-from pydc1394._dc1394core import video_mode_vals, _dll
+from pydc1394._dc1394core import video_mode_vals, color_coding_vals, _dll
 from ctypes import ARRAY, c_byte
 from numpy import frombuffer, ndarray
 

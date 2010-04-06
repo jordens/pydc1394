@@ -579,6 +579,10 @@ class Mode(object):
         self._cam = cam
 
     @property
+    def mode_id(self):
+        return self._mode_id
+
+    @property
     def name(self):
         """
         A descriptive name for this mode. Like ``"640x480_Y8"`` or
@@ -1259,7 +1263,7 @@ class Camera(object):
         _dll.dc1394_video_get_supported_modes(self._cam, byref(modes))
         modes = [_mode_map[i](self._cam, i)
                 for i in modes.modes[:modes.num]]
-        modes_dict = dict((m.mode_id, m) for m in self._modes)
+        modes_dict = dict((m.mode_id, m) for m in modes)
         return modes, modes_dict
 
     @property
