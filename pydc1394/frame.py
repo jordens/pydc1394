@@ -100,7 +100,7 @@ class Frame(ndarray):
         new-from-templates or copies. Otheriwse an AttributeError will
         be raised.
         """
-        if not hasattr(self, "_frame") or self.base is not None:
+        if not hasattr(self, "_frame"): # or self.base is not None:
             raise AttributeError, "can only enqueue the original frame"
         if self._frame is not None:
             _dll.dc1394_capture_enqueue(self._cam, self._frame)
