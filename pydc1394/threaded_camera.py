@@ -22,10 +22,10 @@
 from pydc1394.camera2 import Camera
 
 from threading import Thread, Condition, Event
-from Queue import Queue
+from Queue import Queue, Full
 
 class ThreadedCamera(Camera):
-    def start(self, queue=0):
+    def start(self, queue=0, mark_corrupt=True):
         """
         Start the handling of acquired frames.
 
@@ -39,8 +39,12 @@ class ThreadedCamera(Camera):
         queue) and can be obtained sequentially using
         :meth:`next_image`.
 
+        If ``mark_corrupt=True``, the frames returned have a corruption
+        marker attached.
+
         End the acquisition by calling :meth:`stop`.
         """
+        self.mark_corrupt = mark_corrupt
         self.abort_thread = Event()
         self.new_image = Condition()
         if queue == 1:
@@ -59,12 +63,20 @@ class ThreadedCamera(Camera):
         """
         while not self.abort_thread.is_set():
             img = self.dequeue(poll=False)
+            if img is None:
+                continue
             img_copy = img.copy()
-            img.enqueue()
+            if self.mark_corrupt:
+                img_copy.corruption_marker = img.corrupt
+            img.enqueue() # need to enqueue in the same thread
+            img = img_copy
             with self.new_image:
-                self.current = img_copy
+                self.current = img
                 if self.queue:
-                    self.queue.put_nowait(self.current) # may raise Full
+                    try:
+                        self.queue.put_nowait(self.current)
+                    except Full:
+                        pass # drop the frame
                 self.new_image.notify_all()
 
     def next_image(self):
