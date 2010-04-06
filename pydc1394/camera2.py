@@ -19,8 +19,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA  02110-1301  USA
 
-from pydc1394._dc1394core import _dll, DC1394Exception, bool_t, switch_t
-from pydc1394._dc1394core import (camera_list_t, 
+from pydc1394._dc1394core import _dll, DC1394Exception, DC1394Error
+from pydc1394._dc1394core import (camera_list_t, bool_t, switch_t,
         featureset_t, FEATURE_NUM, feature_info_t,
         feature_vals, feature_codes,
         feature_modes_t, feature_mode_t,
