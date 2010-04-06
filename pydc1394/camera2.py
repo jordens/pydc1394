@@ -19,10 +19,30 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA  02110-1301  USA
 
-from pydc1394._dc1394core import *
-from pydc1394._dc1394core import _dll
+from pydc1394._dc1394core import _dll, DC1394Exception, bool_t, switch_t
+from pydc1394._dc1394core import (camera_list_t, 
+        featureset_t, FEATURE_NUM, feature_info_t,
+        feature_vals, feature_codes,
+        feature_modes_t, feature_mode_t,
+        feature_mode_vals, feature_mode_codes,
+        trigger_mode_t, trigger_mode_codes_short, trigger_mode_vals_short,
+        trigger_polarity_t,
+        trigger_polarity_vals_short, trigger_polarity_codes_short,
+        trigger_sources_t, trigger_source_t, 
+        trigger_source_vals_short, trigger_source_codes_short,
+        framerates_t, framerate_t, framerate_vals, framerate_codes,
+        video_frame_t, speed_t, speed_vals, speed_codes,
+        operation_mode_t, operation_mode_vals_short,
+        operation_mode_codes_short,
+        video_modes_t, video_mode_t,
+        video_mode_codes, video_mode_vals,
+        color_codings_t, color_coding_t,
+        color_coding_vals, color_coding_codes,
+        capture_flag_codes_short)
+from pydc1394._dc1394core import (QUERY_FROM_CAMERA, USE_RECOMMENDED,
+        USE_MAX_AVAIL, CAPTURE_POLICY_POLL, CAPTURE_POLICY_WAIT)
 from pydc1394.frame import Frame
-from ctypes import c_int, c_uint32, c_int32, c_float
+from ctypes import (byref, POINTER, c_uint32, c_int32, c_float)
 
 
 
@@ -127,15 +147,19 @@ class Feature(object):
     A feature can be activated or deactived via the :attr:`active`
     attribute if they are :attr:`switchable`.
 
-    The :attr:`mode` of operation (manual, auto, or one_push) 
-    can be one of those in :attr:`modes`.
+    The :attr:`mode` of operation (``"manual"``, ``"auto"``, or
+    ``"one_push"``) can be one of those in :attr:`modes`.
 
     The value is either given via the :attr:`value` or :attr:`absolute`
     attribute depending on whether the feature is
     :attr:`absolute_capable` and whether it is in
     :attr:`absolute_control`. The non-absolute value is an integer with
     a meaning that may be internal to the camera and vendor specific.
-    FIXME: What are the units of :attr:`absolute`?
+    For the actual units of :attr:`absolute` see the IIDC standard:
+    Brightness (%), Exposure (EV), WhiteBalance (K), Hue (deg), 
+    Saturation (%), Shutter (s), Gain (dB), Iris (F), Focus (m),
+    Trigger (times, 1), TriggerDelay (s), FrameRate (fps), Zoom (power),
+    Pan (deg), Tilt (deg).
 
     The absolute value must be in the :attr:`absolute_range`
     and the internal value must be in :attr:`value_range`.
@@ -789,9 +813,11 @@ class Format7(Mode):
         The following definitions can be used to set ROI of Format7 in
         a simpler fashion:
         
-        * -1=QUERY_FROM_CAMERA will use the current value used by the camera,
-        * -2=USE_MAX_AVAIL will set the value to its maximum and
-        * -3=USE_RECOMMENDED can be used for the bytes-per-packet setting.
+        * QUERY_FROM_CAMERA (-1) will use the current value used by the
+          camera,
+        * USE_MAX_AVAIL will (-2) set the value to its maximum and
+        * USE_RECOMMENDED (-3) can be used for the bytes-per-packet
+          setting.
         """
         w, h, x, y = c_int32(), c_int32(), c_int32(), c_int32()
         cco, packet_size = color_coding_t(), c_int32()
@@ -852,7 +878,7 @@ class Format7(Mode):
     @property
     def total_bytes(self):
         """
-        Current total number of bytes per frame.  Read-only.
+        Current total number of bytes per frame. Read-only.
 
         This includes padding (to reach an entire number of packets).
         Use :attr:`packet_size` to influence its value.
@@ -883,22 +909,22 @@ class Format7(Mode):
             self._cam, self._mode_id, byref(px))
         return px.value
 
-    def setup(self, size=(QUERY_FROM_CAMERA, QUERY_FROM_CAMERA),
-            offset=(QUERY_FROM_CAMERA, QUERY_FROM_CAMERA),
-            color=QUERY_FROM_CAMERA, packet_size=USE_RECOMMENDED):
+    def setup(self, image_size=(QUERY_FROM_CAMERA, QUERY_FROM_CAMERA),
+            image_position=(QUERY_FROM_CAMERA, QUERY_FROM_CAMERA),
+            color_coding=QUERY_FROM_CAMERA, packet_size=USE_RECOMMENDED):
         """
         Setup this Format7 mode.
         
-        Similar to setting :attr:`roi` but size and offset are made
+        Similar to setting :attr:`roi` but size and position are made
         multiples of :attr:`unit_size` and :attr:`unit_position`. All
         arguments are optional and default to not changing the current
         value. :attr:`packet_size` is set to the recommended value.
         """
         wu, hu = self.unit_size
         xu, yu = self.unit_position
-        position = xu*int(offset[0]/xu), yu*int(offset[1]/yu)
-        size = wu*int(size[0]/wu), hu*int(size[1]/hu)
-        self.roi = size, position, color, packet_size
+        position = xu*int(image_position[0]/xu), yu*int(image_position[1]/yu)
+        size = wu*int(image_size[0]/wu), hu*int(image_size[1]/hu)
+        self.roi = size, position, color_coding, packet_size
         return self.roi
 
 
@@ -1097,8 +1123,9 @@ class Camera(object):
     def flush(self):
         """
         Flush already acquired and transferred frames from the DMA
-        buffer. These old frames would otherwise be returned by
-        :meth:`dequeue`.
+        buffer.
+        
+        These old frames would otherwise be returned by :meth:`dequeue`.
         """
         frame = POINTER(video_frame_t)()
         while True:
@@ -1118,7 +1145,8 @@ class Camera(object):
         ``None`` immediately if no frame arrived yet (``poll=True``).
 
         Release the returned frame as soon as possible via
-        :meth:`enqueue` to return it to the DMA buffer and recycle it.
+        :meth:`pydc1394.frame.Frame.enqueue` to return it to the DMA buffer
+        and recycle it.
         """
         frame = POINTER(video_frame_t)()
         policy = poll and CAPTURE_POLICY_POLL or CAPTURE_POLICY_WAIT
@@ -1126,36 +1154,8 @@ class Camera(object):
                 policy, byref(frame))
         if not bool(frame):
             return
-        return Frame(frame)
+        return Frame(self._cam, frame)
 
-    def enqueue(self, frame):
-        """
-        Returns a frame to the ring buffer once it has been used.
-        """
-        if frame._frame and frame.base is None:
-            _dll.dc1394_capture_enqueue(self._cam, frame._frame)
-            frame._frame = None
-
-    def corrupt(self, frame):
-        """
-        Is this frame corrupted?
-
-        Returns ``True`` if the given frame has been detected to be
-        corrupt (missing data, corrupted data, overrun buffer, etc.) and
-        ``False`` otherwise.  
-        
-        .. note::
-           Certain types of corruption may go undetected in which case
-           ``False`` will be returned erroneously.  The ability to
-           detect corruption also varies between platforms.
-        
-        .. note::
-           Corrupt frames still need to be enqueued with :meth:`enqueue`
-           when no longer needed by the user.
-        """
-        return bool(_dll.dc1394_capture_is_frame_corrupt(
-                    self._cam, frame._frame))
-   
     def start_capture(self, bufsize=4, capture_flags="DEFAULT"):
         """
         Setup the capture session.
@@ -1307,7 +1307,9 @@ class Camera(object):
         _dll.dc1394_set_control_registers(
                 self._cam, offset, byref(val), 1)
 
-    # shortcuts for getting and setting registers
+    # shortcuts for getting and setting registers.
+    # these make toggling bits simpler (cam[0x100] |= 1<<6 versus
+    # cam.set_register(0x100, cam.get_register(0x100) | (1<<6)))
     __getitem__ = get_register
     __setitem__ = set_register
 
@@ -1353,7 +1355,8 @@ class Camera(object):
         """
         The (integer) GUID of the camera. Read-only.
         
-        Use ``hex(cam.guid)`` to get a hexadecimal string.
+        Use ``hex(cam.guid)`` or ``"%x" % cam.guid`` to get a hexadecimal
+        string.
         """
         return self._cam.contents.guid
 
@@ -1363,6 +1366,10 @@ class Camera(object):
         The vendor name of the camera. Read-only.
         """
         return self._cam.contents.vendor
+
+    def __str__(self):
+        return "<Camera %x (%s/%s)>" % (self.guid,
+                self.vendor, self.model)
 
     @property
     def mode(self):
@@ -1394,19 +1401,23 @@ class Camera(object):
         """
         The framerate belonging to the current camera mode.
 
-        For non-scalable video formats (not :class:`Format7`) there is
-        a set of standard frame rates one can choose from.
+        For non-scalable video formats (not :class:`Format7`) there is a
+        set of standard frame rates one can choose from. A list
+        of all the framerates supported by your camera for a specific
+        video mode can be obtained from :attr:`Mode.rates`.
 
-        Framerates are used with fixed-size image formats (Format_0 to
-        Format_2). Note that you may also be able to set the framerate
-        with the :attr:`framerate` feature.  In :class:`Format7` modes the
-        camera can tell an actual value, but one can not set it.
-        Unfortunately the returned framerate may have no sense at all.
-        If you use Format_7 you should set the framerate by adjusting
-        the number of bytes per packet.
-        
-        A list of all the framerates supported by your camera for a specific
-        video mode can be obtained from :attr:`mode` via :attr:`Mode.rates`.
+        .. note::
+           You may also be able to set the framerate with the
+           :attr:`framerate` feature if present.
+ 
+        .. note::
+           Framerates are used with fixed-size image formats (Format_0
+           to Format_2).  In :class:`Format7` modes the camera can tell
+           an actual value, but one can not set it.  Unfortunately the
+           returned framerate may have no sense at all.  If you use
+           Format_7 you should set the framerate by adjusting the number
+           of bytes per packet (:attr:`Format7.packet_size`) and/or the
+           shutter time.
         """
         ft = framerate_t()
         _dll.dc1394_video_get_framerate(self._cam, byref(ft))
@@ -1521,3 +1532,15 @@ class Camera(object):
         camera unit.
         """
         return bool(_dll.dc1394_is_same_camera(self._cam, other._cam))
+
+    __eq__ = is_same_camera
+
+    @property
+    def node(self):
+        """
+        Gets the IEEE 1394 node ID of the camera.
+        """
+        node, generation = c_uint32(), c_uint32()
+        _dll.dc1394_camera_get_node(self._cam, byref(node),
+                byref(generation))
+        return node.value, generation.value
