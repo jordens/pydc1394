@@ -43,7 +43,7 @@ def capture(cam, n):
     for i in range(n):
         im = cam.dequeue()
         print i, (time.time()-t)/(i+1), im.frames_behind, im.frame_id
-        cam.enqueue(im)
+        im.enqueue()
     cam.stop_multi_shot()
     cam.stop_capture()
 
