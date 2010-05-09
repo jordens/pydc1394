@@ -62,7 +62,6 @@ class DC1394Library(object):
         if self.h is not None:
             self._dll.dc1394_free( self.h )
         self.h = None
-        self.cameralist = []
 
     def enumerate_cameras( self ):
         """

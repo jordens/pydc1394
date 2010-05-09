@@ -50,4 +50,5 @@
     self.cameralist do matter 8).
 
     Later: modified the Image.__array_finalize to something simpler. (Thanks to
+    Bugfix: DC1394Library.close had a cameralist=[], which is an error.
     Robert Jorden.)
