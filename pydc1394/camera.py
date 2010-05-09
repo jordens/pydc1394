@@ -42,25 +42,26 @@ class DC1394Library(object):
     def __init__( self ):
         # we cache the dll, so it gets not deleted before we cleanup
         self._dll = _dll
-        self._h = _dll.dc1394_new()
-        self.cameralist = self.enumerate_cameras()
+        self.h = _dll.dc1394_new()
+        if self.h == None:
+            raise RuntimeError("DC1394 Library not found") 
 
     def __del__(self):
         self.close()
 
     @property
-    def h(self):
-        "The handle to the library context."
-        return self._h
+    def cameralist(self):
+        "list of available cameras and IDs"
+        return self.enumerate_cameras()
 
     ###################################################################
     # Functions:
     ###################################################################
 
     def close( self ):
-        if self._h is not None:
-            self._dll.dc1394_free( self._h )
-        self._h = None
+        if self.h is not None:
+            self._dll.dc1394_free( self.h )
+        self.h = None
         self.cameralist = []
 
     def enumerate_cameras( self ):
@@ -69,6 +70,9 @@ class DC1394Library(object):
 
         returns a list of {'guid','vendor','model'}
         """
+        if self.h == None:
+            return []
+
         l = POINTER(camera_list_t)()
 
         _dll.dc1394_camera_enumerate(self.h, byref(l))
@@ -412,7 +416,7 @@ class CameraProperty(object):
                     val = float(value)
                     # We want shutter in ms
                     if self._name == "shutter":
-                        value /= 1000.
+                        val /= 1000.
                     self._dll.dc1394_feature_set_absolute_value(
                         self._cam._cam, self._id, val
                     )
