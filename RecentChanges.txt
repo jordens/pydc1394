@@ -48,3 +48,6 @@
     A small bug: the shutter value setter was divinding the wrong variable.
     Now it is fixed. Also the libary class is cleaned now, so only self.h and
     self.cameralist do matter 8).
+
+    Later: modified the Image.__array_finalize to something simpler. (Thanks to
+    Robert Jorden.)

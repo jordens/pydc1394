@@ -172,20 +172,12 @@ class Image(ndarray):
             the properties of that image.
         """
         if img != None:
-            self.position = getattr(img, 'position', -1)
-            self.color_coding = getattr(img, 'color_coding', -1)
-
-            self.color_filter = getattr( img, 'color_filter', -1)
-            self.yuv_byte_order = getattr( img, 'yuv_byte_order', -1)
-            self.stride = getattr( img, 'stride', -1)
-            #self.video_mode dropped
-            self.packet_size = getattr(img, 'packet_size', -1)
-            self.packets_per_frame =  getattr( img, 'packets_per_frame', -1)
-            self.timestamp = getattr( img, 'timestamp', -1)
-            self.frames_behind = getattr(img, 'frames_behind', -1)
-            self.id = getattr(img, 'id', -1)
-            self.data_depth = getattr(img, 'data_depth', 8)
-            self._cam = getattr(img, '_cam', None)
+            for i in ['position', 'color_coding', 'color_filter',
+                    'yuv_byte_order', 'stride', 'packet_size',
+                    'packets_per_frame', 'timestamp','frames_behind',
+                    'id', 'data_depth', '_cam']:
+                setattr(self, i, getattr(img, i, None))
+            #end for
         #end if
     #end of __array_finalize_
 
