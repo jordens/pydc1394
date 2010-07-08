@@ -2,17 +2,17 @@
 # encoding: utf-8
 #
 # This file is part of pydc1394.
-# 
+#
 # pydc1394 is free software: you can redistribute it and/or modify it
 # under the terms of the GNU Lesser General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.
-# 
+#
 # pydc1394 is distributed in the hope that it will be useful, but
 # WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 # Lesser General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with pydc1394.  If not, see
 # <http://www.gnu.org/licenses/>.
@@ -40,19 +40,6 @@ class DC1394Library(object):
     object must stay valid untill all cameras are closed
     But then use it well: it not only opens the library, collects
     a reference to the library and the camera list.
-
-    h:				a handler of the library, many functions require it
-
-    enumerate_cameras():
-            a list of dicts. Each camera has a dict, containing:
-            "unit":		the unit ID of the camera
-            "guid":		GUID -> requested for the camera allocation
-            "vendor":	vendor name
-            "model" :	model name
-                        Using this list the user may identify the camera and
-                        pass cameralist[i]['guid'] to the Camera class below.
-
-    close():	frees up the library
     """
     def __init__( self ):
         # we cache the dll, so it gets not deleted before we cleanup
@@ -72,6 +59,10 @@ class DC1394Library(object):
     ###################################################################
 
     def close( self ):
+        """
+        Close the Libraray permanently. All camera handles created with it
+        are invalidated by this.
+        """
         if self._h is not None:
             self._dll.dc1394_free( self._h )
         self._h = None
@@ -80,7 +71,12 @@ class DC1394Library(object):
         """
         Enumerate the cameras currently attached to the bus.
 
-        returns a list of {'guid','vendor','model'}
+        :returns: a list of dictionaries with the following keys per camera:
+
+            * unit
+            * guid
+            * vendor
+            * model
         """
         l = POINTER(camera_list_t)()
 
@@ -117,8 +113,9 @@ class DC1394Library(object):
 class Image(ndarray):
     """
     This class is a image returned by the camera. It is basically a
-    numpy array with some additional informations (like timestamps).
-    It is not based on the vide_frame structure of the dc1394, but rather
+    numpy array with some additional information (like timestamps).
+
+    It is not based on the video_frame structure of the dc1394, but rather
     augments the information from numpy through information of the acquisition
     of this image.
     """
@@ -338,8 +335,9 @@ class _CamAcquisitonThread(Thread):
 # Camera Property implementation #
 ##################################
 class CameraProperty(object):
+    """This class implements a simple Property of the camera"""
+
     def __init__( self, cam, name, id, absolute_capable ):
-        """This class implements a simple Property of the camera"""
         self._id = id
         self._name = name
         self._absolute_capable = absolute_capable
@@ -443,6 +441,7 @@ class CameraProperty(object):
     @property
     def pos_modes(self):
         "The possible control modes for this feature (auto,manual,...)"
+
         if self._name.lower() == "trigger":
             #we need a trick:
             finfo = feature_info_t()
@@ -458,33 +457,33 @@ class CameraProperty(object):
         return [ feature_mode_vals[modes.modes[i]] for i in xrange(modes.num) ]
 
     def mode():
-        doc = """The current control mode this feature is running in.
+        """The current control mode this feature is running in.
 
-                For the trigger it shows the trigger modes (from the dc1394
-                website):
-                mode 0:     Exposure starts with a falling edge and stops when
-                            the the exposure specified by the SHUTTER feature
-                            is elapsed.
-                mode 1:     Exposure starts with a falling edge and stops with
-                            the next rising edge.
-                mode 2:     The camera starts the exposure at the first falling
-                            edge and stops the integration at the nth falling
-                            edge. The parameter n is a prameter of the trigger
-                            that can be set with camera.trigger.val parameter.
-                mode 3:     This is an internal trigger mode. The trigger is
-                            generated every n*(period of fastest framerate).
-                            Once again, the parameter n can be set with
-                            camera.trigger.val.
-                mode 4:     A multiple exposure mode. N exposures are performed
-                            each time a falling edge is observed on the trigger
-                            signal. Each exposure is as long as defined by the
-                            SHUTTER (camera.shutter) feature.
-                mode 5:     Another multiple exposure mode. Same as Mode 4
-                            except that the exposure is is defined by the
-                            length of the trigger pulse instead of the SHUTTER
-                            feature.
+        For the trigger it shows the trigger modes (from the dc1394
+        website):
+        mode 0:     Exposure starts with a falling edge and stops when
+                    the the exposure specified by the SHUTTER feature
+                    is elapsed.
+        mode 1:     Exposure starts with a falling edge and stops with
+                    the next rising edge.
+        mode 2:     The camera starts the exposure at the first falling
+                    edge and stops the integration at the nth falling
+                    edge. The parameter n is a prameter of the trigger
+                    that can be set with camera.trigger.val parameter.
+        mode 3:     This is an internal trigger mode. The trigger is
+                    generated every n*(period of fastest framerate).
+                    Once again, the parameter n can be set with
+                    camera.trigger.val.
+        mode 4:     A multiple exposure mode. N exposures are performed
+                    each time a falling edge is observed on the trigger
+                    signal. Each exposure is as long as defined by the
+                    SHUTTER (camera.shutter) feature.
+        mode 5:     Another multiple exposure mode. Same as Mode 4
+                    except that the exposure is is defined by the
+                    length of the trigger pulse instead of the SHUTTER
+                    feature.
 
-                mode 14 and 15: vendor specified trigger mode.
+        mode 14 and 15: vendor specified trigger mode.
             """
         def fget(self):
             if self._name.lower() == "trigger":
@@ -594,40 +593,43 @@ class CameraProperty(object):
 
 
 class Camera(object):
+    """
+    This class represents a IEEE1394 Camera on the BUS. It currently
+    supports all features of the cameras except white balancing.
+
+    You can pass all features the camera supports as additional arguments
+    to this classes constructor.  For example: shutter = 7.4, gain = 8
+
+    The cameras pictures can be accessed in two ways. Either way, use
+    start() to beginn the capture.  If you are always interested in the
+    latest picture use the new_image Condition, wait for it, then use
+    cam.current_image for your processing. This mode is called interactive
+    because it is used in live displays.  An alternative way is to use
+    shot() which gurantees to deliver all pictures the camera acquires
+    in the correct order. Note though that you have to process these
+    pictures with a certain speed, otherwise the caching queue will
+    overrun. This mode is called serial. Note that you can theoretically
+    also use the first acquisition mode here, but this seldom makes
+    sense since you need a processing of the pictures anyway.
+
+    :arg lib:        the library to open the camera for
+    :type lib:       :class:`~DC1394Library`
+    :arg guid:       GUID of this camera. Can be a hexstring or the integer
+                     value
+    :arg mode:       acquisition mode, e.g. (640, 480, "Y8"). If you pass None,
+                     the current mode is kept. One can also use a string, such
+                     as 'FORMAT7_0'
+    :type mode:      :class:`tuple`, :class:`string` or :const:`None`
+    :arg framerate:  desired framerate, if you pass None, the current camera
+                     setting is kept
+    :type framerate: :class:`float` or :const:`None`
+    :arg isospeed:   desired isospeed, you might want to use 800 if your bus
+                     supports it
+    :type isospeed:  :class:`int`
+    """
+
     def __init__( self, lib, guid, mode = None,
                  framerate = None, isospeed = 400, **feat):
-        """
-        This class represents a IEEE1394 Camera on the BUS. It currently
-        supports all features of the cameras except white balancing.
-
-        You can pass all features the camera supports as additional arguments
-        to this classes constructor.  For example: shutter = 7.4, gain = 8
-
-        The cameras pictures can be accessed in two ways. Either way, use
-        start() to beginn the capture.  If you are always interested in the
-        latest picture use the new_image Condition, wait for it, then use
-        cam.current_image for your processing. This mode is called interactive
-        because it is used in live displays.  An alternative way is to use
-        shot() which gurantees to deliver all pictures the camera acquires
-        in the correct order. Note though that you have to process these
-        pictures with a certain speed, otherwise the caching queue will
-        overrun. This mode is called serial. Note that you can theoretically
-        also use the first acquisition mode here, but this seldom makes
-        sense since you need a processing of the pictures anyway.
-
-        lib       - the DC1394Library object is needed to open a camera
-        guid      - GUID of this camera, can be a hexstring or the integer
-                    value
-        mode      - acquisition mode, e.g. (640, 480, "Y8"). If you pass None,
-                    the current mode is kept. One can also use a string, such
-                    as 'FORMAT7_0'
-
-        framerate - wanted framerate, if you pass None, the current camera
-                    setting is kept
-
-        isospeed  - wanted isospeed, you might want to use 800 if your bus
-                    supports it
-        """
         self._lib = lib
         if isinstance(guid,basestring):
             guid = int(guid,16)

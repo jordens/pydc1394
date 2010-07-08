@@ -46,15 +46,19 @@ def need_cam(f):
     return nose.tools.make_decorator(f)(skipper)
 
 class LibBase(object):
+    @need_cam
     def setUp(self):
         self.l = DC1394Library()
+    @need_cam
     def tearDown(self):
         self.l.close()
 class CamBase(LibBase):
+    @need_cam
     def setUp(self):
         LibBase.setUp(self)
         cams = self.l.enumerate_cameras()
         self.c = Camera(self.l, cams[0]['guid'])
+    @need_cam
     def tearDown(self):
         self.c.stop()
         self.c.close()

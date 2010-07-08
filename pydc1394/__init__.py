@@ -20,4 +20,4 @@
 # Copyright (C) 2009, 2010 by Holger Rapp <HolgerRapp@gmx.net>
 # and the pydc1394 contributors (see README File)
 
-from camera import Camera, DC1394Library, SynchronizedCams, DC1394Error
+from camera import Camera, DC1394Library, SynchronizedCams
