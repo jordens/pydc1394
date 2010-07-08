@@ -30,12 +30,7 @@ from numpy import uint8
 import sys
 
 
-try:
-    _dll = cdll.LoadLibrary(find_library('dc1394'))
-except :
-    print "FATAL: dc1394 not found"
-    raise "RuntimeError"
-#end try
+_dll = cdll.LoadLibrary(find_library('dc1394'))
 
 ###########################################################################
 #                                  ENUMS                                  #

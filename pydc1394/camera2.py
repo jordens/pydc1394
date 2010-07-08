@@ -361,7 +361,7 @@ class Feature(object):
             return
         if mode is not None:
             self.mode = mode
-            if mode is "auto":
+            if mode == "auto":
                 return
         for key, val in kwargs.items():
             if hasattr(self, key):
