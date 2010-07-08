@@ -39,3 +39,16 @@
     Added a Image.color_coding_name for translating the Image.color_coding to
     something human readable.
 
+2010.04.15:
+    The enumerate cameras segfaults when called with a NULL pointer, so I
+    added a test in the Dc1394Library.__init__ to avoid this. If the library
+    can not be loaded, it raises a RuntimeError at this point.
+
+2010.05.09:
+    A small bug: the shutter value setter was divinding the wrong variable.
+    Now it is fixed. Also the libary class is cleaned now, so only self.h and
+    self.cameralist do matter 8).
+
+    Later: modified the Image.__array_finalize to something simpler. (Thanks to
+    Bugfix: DC1394Library.close had a cameralist=[], which is an error.
+    Robert Jorden.)
