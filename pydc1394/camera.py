@@ -49,7 +49,7 @@ class DC1394Library(object):
     """
     This wraps the dc1394 library object which is a nuisance to have
     around. This is bad design on behalve of DC1394. Oh well...  This
-    object must stay valid untill all cameras are closed
+    object must stay valid until all cameras are closed
     But then use it well: it not only opens the library, collects
     a reference to the library and the camera list.
     """
@@ -94,7 +94,6 @@ class DC1394Library(object):
 
         _dll.dc1394_camera_enumerate(self.h, byref(l))
 
-        #cams -> clist renamed for using cam as a camera
         clist = []
         for i in xrange(l.contents.num):
             ids = l.contents.ids[i]
