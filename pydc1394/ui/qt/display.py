@@ -87,13 +87,7 @@ class LiveCameraWin(QWidget):
     def __init__(self, cam, zoom = 1.0, parent = None):
         super(LiveCameraWin, self).__init__(parent)
 
-        w, h, dtype = cam.mode
-        dtype = {
-            "Y8": "uint8",
-            "Y16": "uint16"
-        }[dtype]
-
-        self.camWidget = ImageDisplay((h,w), dtype, zoom)
+        self.camWidget = ImageDisplay(cam.mode.shape, cam.mode.dtype, zoom)
 
         mainLayout = QHBoxLayout()
         mainLayout.addWidget(self.camWidget)

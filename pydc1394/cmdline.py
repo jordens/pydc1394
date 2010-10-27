@@ -60,6 +60,9 @@ def handle_common_options(o, l):
 
     if o.list:
         def pprintf(a0, a1):
+            if isinstance(a0, (int,long)):
+                a0 = hex(a0)
+
             print "   %s   %s" % (a0.center(20), str(a1).center(8))
         pprintf("GUID", "Unit No")
         for cam in cams:

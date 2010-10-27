@@ -89,7 +89,7 @@ class LiveCameraDisplay(LiveImageDisplay):
             title = "%s - %s (%s)" % (cam.vendor,cam.model,cam.guid)
 
         LiveImageDisplay.__init__( self,parent,id,title,
-                cam.numpy_shape,cam.numpy_dtype,zoom,pos )
+                cam.mode.shape,cam.mode.dtype,zoom,pos )
 
 
         # Well if the cam is not yet running, start it

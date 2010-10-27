@@ -207,7 +207,7 @@ video_mode_vals = {
 }
 video_mode_codes = invert_dict( video_mode_vals )
 
-video_mode_t = c_int
+video_mode_t = c_int32
 VIDEO_MODE_MIN = min(video_mode_vals.keys())
 VIDEO_MODE_MAX = max(video_mode_vals.keys())
 VIDEO_MODE_NUM = (VIDEO_MODE_MAX - VIDEO_MODE_MIN + 1)
@@ -240,15 +240,15 @@ video_mode_details = {
        84: (1600,1200,'Y8'),
        85: (1280,960,'Y16'),
        86: (1600,1200,'Y16'),
-       87: (0, 0, 'EXIF'),
-       88: (0, 0, 'FORMAT7_0'),
-       89: (0, 0, 'FORMAT7_1'),
-       90: (0, 0, 'FORMAT7_2'),
-       91: (0, 0, 'FORMAT7_3'),
-       92: (0, 0, 'FORMAT7_4'),
-       93: (0, 0, 'FORMAT7_5'),
-       94: (0, 0, 'FORMAT7_6'),
-       95: (0, 0, 'FORMAT7_7'),
+       87: 'EXIF',
+       88: 'FORMAT7_0',
+       89: 'FORMAT7_1',
+       90: 'FORMAT7_2',
+       91: 'FORMAT7_3',
+       92: 'FORMAT7_4',
+       93: 'FORMAT7_5',
+       94: 'FORMAT7_6',
+       95: 'FORMAT7_7',
 }
 video_mode_details_codes = invert_dict( video_mode_details )
 

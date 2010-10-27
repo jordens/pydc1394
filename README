@@ -51,3 +51,6 @@ The library has seen contributions by the following persons:
       user: tomio2009
       Support for triggers. More type safe wrapping of c-calls.
 
+   Robert Jordens 
+      user: jordens
+      Design and most of the implementation of Mode classes and Format 7 handling.

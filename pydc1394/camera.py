@@ -31,7 +31,19 @@ from threading import *
 
 from Queue import Queue, Full
 
-__all__ = [ "DC1394Library", "Camera", "SynchronizedCams" ]
+from _mode import _mode_map, create_mode
+
+
+__all__ = ["DC1394Library", "Camera", "SynchronizedCams",
+           "DC1394Error", "CameraError"]
+
+class DC1394Error(Exception):
+    """Base class for Exceptions"""
+    pass
+
+class CameraError(DC1394Error, RuntimeError):
+    pass
+
 
 class DC1394Library(object):
     """
@@ -643,56 +655,48 @@ class Camera(object):
         self._new_image = Condition()
         self._current_img = None
         self._worker = None
-        #a default numeric image type
-        self._dtype = '<u1'
 
         self.open()
 
-        # Gather some informations about this camera
-        # Will also set the properties accordingly
-        self._all_features = self.__get_all_features()
-        self._all_modes = self.__get_supported_modes()
-
-        # Set all features to manual (if possible)
-        for f in self._all_features:
-            if 'manual' in self.__getattribute__(f).pos_modes:
-                self.__getattribute__(f).mode = 'manual'
-
-        # Set acquisition mode and framerate
-        #self.mode = mode if mode is not None else self._all_modes[0]
-        #do not change mode if not needed, but set the self._wanted_mode
-        #variable to the code of the current mode.
-        self.mode = tuple(mode) if mode is not None else self.mode
-
-        #set the framerate:
-        #does this work if mode is set to a FORMAT7 mode?
-        #now it does, it does nothing:
-        if 'FORMAT7' not in self.mode[-1].upper():
-            #it sets the framerate if it is available, or nothing
-            self.fps = framerate = framerate or \
-                    self.get_framerates_for_mode(self.mode)[0]
-
-        # If we are not using a FORMAT_7 format, set the framerate feature to
-        # auto again. This control is not available on all cameras, if it is
-        # missing, the framerate is only controllable by the current mode
-
         try:
-            self.framerate.mode = "auto"
-        except AttributeError:
-            pass # Feature not around, so what?
+            # Gather some informations about this camera
+            # Will also set the properties accordingly
+            self._all_features = self.__get_all_features()
+            self._all_modes = self.__get_supported_modes()
 
-        # Set isospeed
-        if isospeed :
-            # If the speed is >= 800, set other operation mode
-            #this is done automatically by the isospeed setting
-            # self._operation_mode = "legacy" if isospeed < 800 else "1394b"
-            self.isospeed = isospeed
+            # Set all features to manual (if possible)
+            for f in self._all_features:
+                if 'manual' in self.__getattribute__(f).pos_modes:
+                    self.__getattribute__(f).mode = 'manual'
 
-        # Set other parameters
-        for n,v in feat.items():
-            if v is None:
-                continue
-            self.__getattribute__(n).val = v
+            # Set acquisition mode and framerate, if no mode is requested,
+            # we set a standard mode.
+            self.mode = tuple(mode) if mode is not None else self.modes[0]
+
+            #set the framerate:
+            self.fps = self.mode.framerates[-1]
+
+            try:
+                self.framerate.mode = "auto"
+            except AttributeError:
+                pass # Feature not around, so what?
+
+            # Set isospeed
+            if isospeed :
+                # If the speed is >= 800, set other operation mode
+                #this is done automatically by the isospeed setting
+                # self._operation_mode = "legacy" if isospeed < 800 else "1394b"
+                self.isospeed = isospeed
+
+            # Set other parameters
+            for n,v in feat.items():
+                if v is None:
+                    continue
+                self.__getattribute__(n).val = v
+        except CameraError, e:
+            self.close()
+            raise
+
 
     def __del__(self):
         self.close()
@@ -773,7 +777,7 @@ class Camera(object):
             return
 
         if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
+            raise CameraError("The camera is not opened!")
 
         self.start_capture(bufsize)
         self.start_video()
@@ -781,7 +785,7 @@ class Camera(object):
         self._queue = None if interactive else Queue(1000)
 
         # Now, start the Worker thread
-        self._worker = _CamAcquisitonThread( self, self.new_image )
+        self._worker = _CamAcquisitonThread( self, self._new_image )
 
         self._running_lock.acquire()
         self._running = True
@@ -812,11 +816,19 @@ class Camera(object):
         This function resets the bus the camera is attached to. Note that
         this means that all cameras have to reenumerate and will drop frames.
         So only use this if you know what you are doing.
+
+        Note that the camera the camera is closed after this and it is not
+        guaranteed that you can reopen it with :method:`open` again. To be sure,
+        you have to recreate a new Camera object.
         """
         if self.running:
             self.stop()
 
         self._dll.dc1394_reset_bus( self._cam )
+        self.close()
+
+        # This is needed so the generation is updated on Linux
+        self._lib.enumerate_cameras()
 
     def shot( self ):
         """
@@ -830,9 +842,9 @@ class Camera(object):
         for visualisation.
         """
         if not self.running:
-            raise RuntimeError, "Camera is not running!"
+            raise CameraError("Camera is not running!")
         if not self._queue:
-            raise RuntimeError, "Camera is running in interactive mode!"
+            raise CameraError("Camera is running in interactive mode!")
 
         return self._queue.get()
 
@@ -840,7 +852,7 @@ class Camera(object):
         """Open the camera"""
         self._cam = _dll.dc1394_camera_new( self._lib.h, self._guid )
         if not self._cam:
-            raise RuntimeError, "Couldn't access camera!"
+            raise CameraError("Couldn't access camera!")
 
     def close(self):
         """Close the camera. Stops it, if it was running"""
@@ -850,102 +862,6 @@ class Camera(object):
         if self._cam:
             _dll.dc1394_camera_free( self._cam )
             self._cam = None
-
-    def program_format7_mode(self, slot, offset = (0,0), mode = (640,480,"Y8")):
-        """
-        Program a given Format 7 slot (0 = FORMAT7_0) with the given
-        parameters.  The package size is always the maximum available. The
-        framerate can then only be controlled through the framerate property
-        (if available).  This also implicitly sets the correct mode for
-        format 7.
-
-        If you change the mode to a normal one and want your format 7 mode
-        again, you have to recall this function. The behaviour otherwise
-        is undefined.
-
-        slot   - 0,1,2 FORMAT7 Slot to program
-        offset - picture offset (for ROI)
-        mode   - Resolution and data depth is extracted. A valid mode would
-                 be (121,99,"RGB")
-        """
-        if self.running:
-            raise RuntimeError(
-                "Can't set Format7 mode while camera is running!")
-
-        newmode = "FORMAT7_%i" % slot
-        if newmode in video_mode_codes:
-            uslot = video_mode_codes[ newmode ]
-
-        else :
-            print "Available modes:"
-            print filter( lambda x: "FORMAT7" in x, video_mode_codes.keys())
-
-            return
-
-        #color coding:
-        cco = color_coding_t()
-
-        #What is set for the camera?
-        self._dll.dc1394_format7_get_color_coding( self._cam,\
-                uslot, byref(cco) )
-        #if this is different, try to set it first:
-        if color_coding_vals[cco.value] != mode[-1] :
-            #what is available in this mode?
-            pos_codings = color_codings_t()
-            self._dll.dc1394_format7_get_color_codings( self._cam,\
-                    uslot, byref(pos_codings))
-            #convert it to a list:
-            codelist = []
-            for i in xrange(pos_codings.num):
-                codelist.append( color_coding_vals[ pos_codings.codings[i] ])
-            if mode[-1] in codelist:
-                cco2 = color_coding_codes[ mode[-1] ]
-                self._dll.dc1394_format7_set_color_coding( self._cam,\
-                    uslot, cco2)
-            else :
-                print "available modes:"
-                print codelist
-                return
-
-        #this invokes the standard mode setting part, which will
-        #set FORMAT7 modes. The python variable shall show a 0,0 resolution:
-        #that one we set by hand:
-        self.mode = newmode
-
-        #the format7 position and image size can only be set in units.
-        #1. check for these units:
-        h_unit = c_uint32(); v_unit = c_uint32()
-
-        self._dll.dc1394_format7_get_unit_position(self._cam,\
-                self._wanted_mode,\
-                byref(h_unit), byref(v_unit))
-
-        #Tupple does not support elementwise value changing, so do it dirty:
-        offset = list(offset)
-        offset[0] = h_unit.value*int(offset[0]/h_unit.value) if \
-                h_unit.value > 1 else offset[0]
-        offset[1] = v_unit.value*int(offset[1]/v_unit.value) if \
-                v_unit.value > 1 else offset[1]
-
-        self._dll.dc1394_format7_get_unit_size( self._cam,\
-                self._wanted_mode,\
-                byref(h_unit), byref(v_unit))
-
-        mode = list(mode)
-        mode[0] = h_unit.value *int(mode[0]/h_unit.value) if \
-                h_unit.value > 1 else mode[0]
-        mode[1] = v_unit.value*int(mode[1]/v_unit.value) if \
-                v_unit.value > 1 else mode[1]
-
-        #now the ROI should set without a problem (except out of size range):
-        self._dll.dc1394_format7_set_roi(
-            self._cam, uslot,
-            cco, USE_MAX_AVAIL,
-            offset[0], offset[1],
-            mode[0],mode[1])
-
-        # But directly overwrite the shape (the last number is 3 for RGB modes)
-        self._shape[0:2] = [ mode[1], mode[0] ]
 
     ###########################################################################
     #                     INFORMATION GATERHING FUNCTIONS                     #
@@ -961,17 +877,15 @@ class Camera(object):
         Returns:    list of available video modes
         """
         if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
+            raise CameraError("The camera is not opened!")
 
         modes = video_modes_t()
-        supmodes = []
 
         _dll.dc1394_video_get_supported_modes( self._cam, byref(modes))
+        return [_mode_map[i](self._cam, i)
+                for i in modes.modes[:modes.num]]
 
-        for i in range(modes.num):
-            supmodes.append( video_mode_vals[modes.modes[i]] )
-
-        return supmodes
+        # return [ Mode(video_mode_details[modes.modes[i]] for i in range(modes.num)]
 
     def __get_all_features( self ):
         """
@@ -986,7 +900,7 @@ class Camera(object):
         """
 
         if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
+            raise CameraError("The camera is not opened!")
 
         fs = featureset_t()
         _dll.dc1394_feature_get_all( self._cam, byref(fs) )
@@ -1011,7 +925,7 @@ class Camera(object):
     def get_register( self, offset ):
         """Get the control register value of the camera a the given offset"""
         if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
+            raise CameraError("The camera is not opened!")
 
         val = c_uint32()
         _dll.dc1394_get_control_registers( self._cam, offset, byref(val), 1)
@@ -1021,7 +935,7 @@ class Camera(object):
         """Set the control register value of the camera at the given offset to
         the given value"""
         if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
+            raise CameraError("The camera is not opened!")
 
         val = c_uint32(value)
         _dll.dc1394_set_control_registers( self._cam, offset, byref(val), 1)
@@ -1044,7 +958,7 @@ class Camera(object):
         """
         def fget(self):
             if not self._cam:
-                raise RuntimeError, "The camera is not opened!"
+                raise CameraError("The camera is not opened!")
 
             k = bool_t()
             self._dll.dc1394_camera_get_broadcast( self._cam, byref(k))
@@ -1055,7 +969,7 @@ class Camera(object):
 
         def fset(self, value):
             if not self._cam:
-                raise RuntimeError, "The camera is not opened!"
+                raise CameraError("The camera is not opened!")
 
             use =  1 if value else 0
             self._dll.dc1394_camera_set_broadcast( self._cam, use )
@@ -1079,22 +993,6 @@ class Camera(object):
         return self._new_image
 
     @property
-    def numpy_shape(self):
-        """
-        This returns the shape the camera currently delivers. It is useful
-        if you want to create a matching numpy array
-        """
-        return self._shape
-
-    @property
-    def numpy_dtype(self):
-        """
-        This returns the datatype the camera currently delivers. It is useful
-        if you want to create a matching numpy array
-        """
-        return self._dtype
-
-    @property
     def running(self):
         """
         This is a thread safe propertie which can check
@@ -1109,7 +1007,7 @@ class Camera(object):
     def model(self):
         "The name of this camera (string)"
         if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
+            raise CameraError("The camera is not opened!")
 
         return self._cam.contents.model
 
@@ -1117,7 +1015,7 @@ class Camera(object):
     def guid(self):
         "The Guid of this camera as string"
         if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
+            raise CameraError("The camera is not opened!")
 
         return hex(self._cam.contents.guid)[2:-1]
 
@@ -1125,179 +1023,77 @@ class Camera(object):
     def vendor(self):
         "The vendor of this camera (string)"
         if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
+            raise CameraError("The camera is not opened!")
 
         return self._cam.contents.vendor
 
     def mode():
-        doc = \
-            """ The actual video mode of the camera.
-                (one can query as a variable or set it.
-                One can set a tupple (hsize, vsize, 'color_coding') or a
-                simple text '640x480_RGB8'. Or simply one of the modes,
-                such as: modes[0].
+        """
+        The current video mode of the camera.
 
-                If FORMAT7 mode is selected, it sets to the camera to maximal
-                resolution. This deletes the previous ROI.
+        The video modes are what let you choose the image size and color
+        format. Two special format classes exist: the :class:`Exif`
+        mode (which is actually not supported by any known camera)
+        and :class:`Format7` which is the scalable image format.
+        Format7 allows you to change the image size, framerate, color
+        coding and crop region.
 
-                When queried, it returns the actual resolution in a tupple:
-                (hsize, vsize, "color_mode")
-            """
+        Important note: your camera will not support all the video modes
+        but will only supports a more or less limited subset of them.
+
+        Use :attr:`modes` to obtain a list of valid modes for this camera.
+
+        This property can be written as either a string describing a simple
+        mode: "640x480_Y8", as a tuple (640, 480, "Y8") or as a Mode class.
+        If you want to use Format7 use the Format7 class.
+        """
         def fget(self):
-            vmod = video_mode_t()
-            self._dll.dc1394_video_get_mode( self._cam, byref(vmod))
-            #set self._wanted_mode to store the code of the mode (internal use):
-            self._wanted_mode = vmod.value
-            #the video_mode_details have all supported keys:
-            mode = video_mode_details[ vmod.value ]
-
-            #format7 modes: the resolution depends on the camera:
-            if "FORMAT7" in mode[-1]:
-                hsize = c_uint32(); vsize= c_uint32()
-
-                self._dll.dc1394_format7_get_image_size(self._cam, \
-                        self._wanted_mode, \
-                        byref(hsize), byref(vsize))
-
-                return (int(hsize.value), int(vsize.value),\
-                            video_mode_details[self._wanted_mode][-1])
-            else:
-                return video_mode_details[self._wanted_mode]
-
+            # vmod = video_mode_t()
+            # self._dll.dc1394_video_get_mode(self._cam, byref(vmod))
+            return self._mode
         def fset(self, mode):
-            if self.running:
-                raise RuntimeError, "Can't change mode while camera is running!"
-
-            if not self._cam:
-                raise RuntimeError, "The camera is not opened!"
-
-            #one can pass here a string like camera.modes[0]
-            #or a full tuple (640,480,'Y8')...
-            #convert it to a valid text key:
-            if mode.__class__.__name__ != 'str' :
-                if "FORMAT7" not in mode[-1].upper():
-                    mode = "%dx%d_%s" %(mode[0],mode[1],mode[2])
-                else:
-                    #a format7 mode is only the mode name:
-                    mode = mode[-1]
-            #...so we can search in the video_mode_codes
-
-            if mode not in self.modes:
-                raise ValueError, "This mode is not supported by this camera!"
-
-            #if it is a supported mode, then the video_mode_codes has this key:
-            #keep self._wanted_mode for historical reasons (and comfort)
-            self._wanted_mode = video_mode_codes[ mode ]
-            #now set the mode in the camera:
-            self._dll.dc1394_video_set_mode( self._cam, self._wanted_mode)
-
-            #now we have the code, we can set the mode back to provide
-            #a return value:
-            mode = video_mode_details[ self._wanted_mode ]
-            #from now mode is a tupple...
-            if "FORMAT7" in mode[-1].upper():
-                hsize = c_uint32()
-                vsize = c_uint32()
-                self._dll.dc1394_format7_get_max_image_size(self._cam, \
-                        self._wanted_mode, \
-                        byref(hsize), byref(vsize))
-
-                cc = color_coding_t()
-                self._dll.dc1394_format7_get_color_coding( self._cam, \
-                        self._wanted_mode,\
-                        byref(cc))
-
-                #first set the image position to (0,0):
-                self._dll.dc1394_format7_set_image_position( self._cam,\
-                        self._wanted_mode,\
-                        c_uint32(0), c_uint32(0))
-
-                #now set image size to the maximum
-                self._dll.dc1394_format7_set_image_size( self._cam,\
-                        self._wanted_mode,\
-                        hsize, vsize)
-
-                #delegate this to the shape of the image:
-                #an array is indexed vertically then horizontally
-                self._shape = [ int(vsize.value) , int(hsize.value) ]
-
-                #a descriptive text of color coding:
-                ccval = color_coding_vals[ cc.value ]
-
-            else:
-                #just to have one consistent variable for
-                #identifying the color coding and dtype:
-                ccval = mode[-1]
-                self._shape = [ mode[1], mode[0] ]
-
-            if '8' in ccval:
-                self._dtype = '>u1'
-            elif '16' in ccval:
-                self._dtype = '>u2'
-            elif 'YUV' in ccval:
-                print "Warning: YUV image format!"
-                #the data depth is 8 bit in the buffer,
-                #but 12 or 16 bit in a color pixel.
-                self._dtype = ">u1"
-            else:
-                print "Nonstandard image format: %s" %mode[-1]
-                self._dtype = ">u1"
-
-            #RGB can be both 8 and 16 bit. So let us check that
-            #in a nice way:
-            if "RGB" in ccval:
-                self._shape.append(3)
-
+            if isinstance(mode, (tuple,basestring)):
+                try:
+                    mode = create_mode(self._cam, mode)
+                except KeyError:
+                    raise CameraError("Invalid mode for this camera!")
+            self._mode = mode
+            _dll.dc1394_video_set_mode(self._cam, mode.mode_id)
         return locals()
     mode = property(**mode())
 
+
     def fps():
-        doc = \
-            """ The framerate belonging to the current camera mode.
-                For not scalable video formats there is a set of
-                standard frame rates one can choose from.
+        """
+        The framerate belonging to the current camera mode.
 
-                In FORMAT7 format the camera can tell an actual
-                value, but one can not set it.
-                Unfortunately the returned framerate may have no sense at all.
+        For non-scalable video formats (not :class:`Format7`) there is a
+        set of standard frame rates one can choose from. A list
+        of all the framerates supported by your camera for a specific
+        video mode can be obtained from :attr:`Mode.rates`.
 
-                If a value is set, it is tested against the supported
-                values and then set.
-            """
+        .. note::
+           You may also be able to set the framerate with the
+           :attr:`framerate` feature if present.
+
+        .. note::
+           Framerates are used with fixed-size image formats (Format_0
+           to Format_2).  In :class:`Format7` modes the camera can tell
+           an actual value, but one can not set it.  Unfortunately the
+           returned framerate may have no sense at all.  If you use
+           Format_7 you should set the framerate by adjusting the number
+           of bytes per packet (:attr:`Format7.packet_size`) and/or the
+           shutter time.
+        """
         def fget(self):
-            if 'FORMAT7' not in self.mode[-1].upper():
-                ft = framerate_t()
-                self._dll.dc1394_video_get_framerate( self._cam, byref(ft))
-                return framerate_vals[ ft.value ]
-
-            else:
-                fi = c_float()
-                self._dll.dc1394_format7_get_frame_interval(self._cam,\
-                        self._wanted_mode,
-                        byref(fi))
-                #this should be corrected:
-                return (1.0/fi.value if fi.value else 0)
-
+            ft = framerate_t()
+            _dll.dc1394_video_get_framerate(self._cam, byref(ft))
+            return framerate_vals[ft.value]
         def fset(self, framerate):
-            if not self._cam:
-                raise RuntimeError("The camera is not opened!")
-
-            if self.running:
-                raise RuntimeError(
-                    "Can't change framerate while camera is running!"
-                )
-
-            if "FORMAT7" in self.mode[-1].upper():
-                print "Framerate can not be set"
-            else:
-                #is it supported in this mode?
-                if framerate in self.get_framerates_for_mode():
-                    wanted_frate = framerate_codes[ framerate ]
-                    #then set it:
-                    self._dll.dc1394_video_set_framerate(
-                        self._cam, wanted_frate
-                    )
+            wanted_frate = framerate_codes[framerate]
+            _dll.dc1394_video_set_framerate(self._cam, wanted_frate)
         return locals()
+
     fps = property(**fps())
 
     def isospeed():
@@ -1310,8 +1106,8 @@ class Camera(object):
                 One can get the actual set value of the camera or set from:
                 100, 200, 400, 800, 1600, 3200 if the camera supports them.
 
-                Above 400 the the 1394b, high speed mode has to be available
-                (the funtion tries to set it).
+                Above 400 the 1394b high speed mode has to be available
+                (the function tries to set it).
             """
         def fget(self):
             sp = speed_t()
@@ -1324,10 +1120,14 @@ class Camera(object):
                     self._operation_mode = 'legacy' if isospeed < 800 \
                         else '1394b'
                 except RuntimeError:
-                    print "high speed ISO mode is not supported"
+                    raise CameraError(
+                        "1394b mode is not supported by hardware, but needed!"
+                    )
                 else:
                     sp = speed_codes[ isospeed ]
                     self._dll.dc1394_video_set_iso_speed(self._cam, sp )
+            else:
+                raise CameraError("Invalid isospeed: %s" % isospeed)
         return locals()
     isospeed = property( **isospeed() )
 
@@ -1340,7 +1140,7 @@ class Camera(object):
         """
         def fget(self):
             if not self._cam:
-                raise RuntimeError, "The camera is not opened!"
+                raise CameraError("The camera is not opened!")
 
             k = c_int()
             self._dll.dc1394_video_get_operation_mode( self._cam, byref(k))
@@ -1350,7 +1150,7 @@ class Camera(object):
                 return "1394b"
         def fset(self, value):
             if not self._cam:
-                raise RuntimeError, "The camera is not opened!"
+                raise CameraError("The camera is not opened!")
 
             use =  480 if value == "legacy" else 481
             self._dll.dc1394_video_set_operation_mode( self._cam, use )
@@ -1361,25 +1161,6 @@ class Camera(object):
     def modes(self):
         "Return all supported modes for this camera"
         return self._all_modes
-
-    def get_framerates_for_mode(self, mode = None):
-        """ Returns all framerates supported for the given mode; if mode is
-            None the current mode will be used.
-        """
-        if not self._cam:
-            raise RuntimeError, "The camera is not opened!"
-
-        use_modes = mode or self._wanted_mode
-
-        if 'FORMAT7' in self.mode[-1].upper():
-            print "Framerates are not valid for scalable mode"
-            return [ self.fps ]
-
-        fpss = framerates_t()
-        _dll.dc1394_video_get_supported_framerates(self._cam, self._wanted_mode,
-                        byref(fpss))
-        return tuple( framerate_vals[fpss.framerates[i]]
-             for i in range( fpss.num ) )
 
 
     @property
