@@ -227,7 +227,7 @@ class _CamAcquisitonThread(Thread):
                 frame.contents.frames_behind,frame.contents.id
             self._cam._current_img = img
 
-            #is the camera streaming to a queue?
+            # is the camera streaming to a queue?
             if self._cam._queue:
                 # Will throw an exception if you're to slow while processing
                 self._cam._queue.put_nowait(img)
@@ -844,7 +844,7 @@ class Camera(object):
         "Threadsafe access to the current image of the camera"
         # We do proper locking
         self._new_image.acquire()
-        self._new_image.wait()
+        self._new_image.wait(3.)
         i = self._current_img
         self._new_image.release()
         return i
