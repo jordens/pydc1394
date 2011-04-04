@@ -35,44 +35,21 @@ class _WorkerThread(Thread):
         cam - camera
         """
         Thread.__init__(self)
-
         self._ld = ld
         self._cam = cam
-
         self._should_abort = False
-        self._abort_lock = Lock()
-
         self.start()
 
     def abort(self):
-        self._abort_lock.acquire()
         self._should_abort = True
-        self._abort_lock.release()
 
     def run(self):
-        dobreak = False
-        while self._cam.running:
-            self._abort_lock.acquire()
-            sa = self._should_abort
-            self._abort_lock.release()
-            if sa: break
-
-            # Wait for a new camera picture
-            self._cam.new_image.acquire()
-            self._cam.new_image.wait(.25)
-            if not self._cam.running:
-                dobreak = True
-            else:
-                i = self._cam.current_image
-            self._cam.new_image.release()
-
-            if dobreak:
-                wx.PostEvent(self._ld, wx.CloseEvent()) # we continue as normal, the ld will abort us
-            elif self._ld:
-                wx.PostEvent(self._ld, NewImageEvent(i))
-
+	while not self._should_abort:
+            i = self._cam.dequeue()
+            wx.PostEvent(self._ld, NewImageEvent(i.copy()))
+	    i.enqueue()
             wx.Yield()
-
+        wx.PostEvent(self._ld, wx.CloseEvent()) # we continue as normal, the ld will abort us
         # The parent window should close itself now
 
 class LiveCameraDisplay(LiveImageDisplay):
@@ -89,11 +66,13 @@ class LiveCameraDisplay(LiveImageDisplay):
             title = "%s - %s (%s)" % (cam.vendor,cam.model,cam.guid)
 
         LiveImageDisplay.__init__( self,parent,id,title,
-                cam.mode.shape,cam.mode.dtype,zoom,pos )
+                cam.mode.image_size,cam.mode.dtype,zoom,pos )
 
 
         # Well if the cam is not yet running, start it
-        cam.start(interactive = True)
+	cam.start_capture()
+	cam.start_video()
+	self.cam = cam
 
         self._worker = _WorkerThread(cam,self)
 
@@ -110,6 +89,6 @@ class LiveCameraDisplay(LiveImageDisplay):
         if self._worker.isAlive():
             self._worker.abort()
             self._worker.join()
+	self.cam.stop_video()
+	self.cam.stop_capture()
         self.Destroy()
-        del self
-

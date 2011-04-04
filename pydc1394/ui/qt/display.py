@@ -72,22 +72,19 @@ class AcquisitionThread(QThread):
         return s
 
     def run(self):
-        if not self._cam.running:
-            self._cam.start(interactive=True)
+        self._cam.start_capture()
+	self._cam.start_video()
 
         while not self.isStopped():
-            self._cam.new_image.acquire()
-            if not self._cam.running:
-                self.stop()
-            else:
-                self.emit(SIGNAL("newImage"), self._cam.current_image)
-            self._cam.new_image.release()
+	    i = self._cam.dequeue()
+            self.emit(SIGNAL("newImage"), i.copy())
+	    i.enqueue()
 
 class LiveCameraWin(QWidget):
     def __init__(self, cam, zoom = 1.0, parent = None):
         super(LiveCameraWin, self).__init__(parent)
 
-        self.camWidget = ImageDisplay(cam.mode.shape, cam.mode.dtype, zoom)
+        self.camWidget = ImageDisplay(cam.mode.image_size, cam.mode.dtype, zoom)
 
         mainLayout = QHBoxLayout()
         mainLayout.addWidget(self.camWidget)
@@ -95,7 +92,7 @@ class LiveCameraWin(QWidget):
 
         self.setWindowTitle(
             "Camera %s, GUID %s, %s, %.1f fps" % (
-                cam.model, cam.guid, str(cam.mode), cam.fps)
+                cam.model, cam.guid, str(cam.mode), cam.rate)
         )
 
         self.acquisitionThread = AcquisitionThread(cam)

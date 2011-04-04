@@ -40,8 +40,7 @@ def main():
 
     options, args = p.parse_args()
 
-    l = DC1394Library()
-    cam = handle_common_options(options,l)
+    cam = handle_common_options(options)
 
     if cam:
         app = QApplication(args)

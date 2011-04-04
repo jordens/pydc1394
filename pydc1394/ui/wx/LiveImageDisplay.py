@@ -82,7 +82,6 @@ class LiveImageDisplayPanel(glcanvas.GLCanvas):
         defcapture_dir - Directory to save captured images to
         """
         wx.glcanvas.GLCanvas.__init__(self,parent,-1)
-
         # Initialize Variables
         self._caputure_dir = defcapture_dir
         self._fps = 0
