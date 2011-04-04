@@ -21,26 +21,25 @@
 # and the pydc1394 contributors (see README File)
 
 
-from pydc1394 import DC1394Library, Camera
-
-l = DC1394Library()
-cams = l.enumerate_cameras()
-cam0_handle = cams[0]
+from pydc1394.camera2 import Camera
 
 print "Opening camera!"
-cam0 = Camera(l, cam0_handle['guid'])
+cam0 = Camera()
 
 print "Vendor:", cam0.vendor
 print "Model:", cam0.model
 print "GUID:", cam0.guid
 print "Mode:", cam0.mode
-print "Framerate: ", cam0.framerate.val
+print "Framerate: ", cam0.framerate.value
 
 print "Acquiring one frame!"
-cam0.start()
-i = cam0.shot()
+cam0.start_capture()
+cam0.start_one_shot()
+i = cam0.dequeue()
 print "Shape:", i.shape
 print "Dtype:", i.dtype
-cam0.stop()
+i.enqueue()
+cam0.stop_one_shot()
+cam0.stop_capture()
 
 print "All done!"

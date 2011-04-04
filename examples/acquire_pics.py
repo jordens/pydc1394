@@ -25,7 +25,6 @@ import time
 import optparse
 
 from pydc1394 import DC1394Library, Camera
-from pydc1394.ui.qt import LiveCameraWin
 from pydc1394.cmdline import add_common_options, handle_common_options
 
 
@@ -37,12 +36,12 @@ def main():
 
     options, args = p.parse_args()
 
-    l = DC1394Library()
-    cam = handle_common_options(options,l)
+    cam = handle_common_options(options)
 
     if cam:
         print "Starting camera in normal mode. We need to process all pictures!"
-        cam.start(interactive=False)
+	cam.start_capture()
+	cam.start_multi_shot(25)
 
         print "Better be quick now! All images are saved in a Queue object, if we"
         print "are not fast enough in acquisition, the queue will overrun and"
@@ -50,10 +49,12 @@ def main():
 
         print "Acquiring 25 images"
         for idx in range(1,26):
-            i = cam.shot()
+            i = cam.dequeue()
             print "The last picture %i was acquired at: " % idx, i.timestamp
+	    i.enqueue()
 
-        cam.stop()
+        cam.stop_multi_shot()
+	cam.stop_video()
 
         print "All done."
 

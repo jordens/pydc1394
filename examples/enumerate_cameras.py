@@ -25,13 +25,11 @@
 Enumerate all cameras connected to the bus
 """
 
-from pydc1394 import Camera, DC1394Library
+from pydc1394.camera2 import Context
 
 print "All cameras on bus:"
 
-l = DC1394Library()
-cams = l.enumerate_cameras()
-for c in cams:
+for c in Context().cameras:
     print c
 
 
