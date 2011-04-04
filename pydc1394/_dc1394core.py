@@ -157,14 +157,14 @@ operation_mode_vals = {
         480: "OPERATION_MODE_LEGACY",
         481: "OPERATION_MODE_1394B",
 }
-operation_mode_codes = invert_dict( iidc_version_vals )
+operation_mode_codes = invert_dict( operation_mode_vals )
 
 operation_mode_vals_short = {
         480: "LEGACY",
         481: "1394B",
 }
 
-operation_mode_codes_short = invert_dict( iidc_version_vals_short )
+operation_mode_codes_short = invert_dict( operation_mode_vals_short )
 
 operation_mode_t = c_int
 
@@ -1612,7 +1612,7 @@ _dll.dc1394_format7_get_roi.errcheck = _errcheck
 # parameters: &camera, video_mode, &width, &height
 _dll.dc1394_get_image_size_from_video_mode.restype = error_t
 _dll.dc1394_get_image_size_from_video_mode.argtypes = [ POINTER(camera_t), video_mode_t,\
-                                        POINTER(c_int32), POINTER(c_int32) ]
+                                        POINTER(c_uint32), POINTER(c_uint32) ]
 _dll.dc1394_get_image_size_from_video_mode.errcheck = _errcheck
 
 
