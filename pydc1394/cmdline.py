@@ -29,7 +29,7 @@ Common cmdline arguments for programs related to cameras
 
 import optparse
 
-from camera import Camera
+from camera2 import Camera, Context
 
 __all__ = [ "add_common_options", "handle_common_options" ]
 
@@ -44,7 +44,7 @@ def add_common_options(p):
     p.add_option("-f", "--fps", dest="fps", type="float",
                  help="Use the given framerate")
     p.add_option("-m", "--mode", dest="mode", type="str",
-                 help="Use the given mode (e.g. 640x480xY8)",metavar="MODE")
+                 help="Use the given mode (e.g. 640x480_Y8)",metavar="MODE")
     p.add_option("-s", "--shutter", dest="shutter", type="float",
                  help="Set the shutter (integration time) to this amount in ms")
     p.add_option("-g", "--gain", dest="gain", type="float",
@@ -52,29 +52,18 @@ def add_common_options(p):
     p.add_option("-i", "--isospeed", dest="isospeed", type="int",
                  help="Choose isospeed [400,800]")
 
-
     return p
 
-def handle_common_options(o, l):
-    cams = l.enumerate_cameras()
+def handle_common_options(o):
+    c = Context()
 
     if o.list:
-        def pprintf(a0, a1):
-            if isinstance(a0, (int,long)):
-                a0 = hex(a0)
+    	print "   %s   %s" % ("GUID".center(20), "Unit No".center(20))
+	for i, g in c.cameras:
+            print "   %s   %s" % (hex(i).center(20), str(g).center(8))
 
-            print "   %s   %s" % (a0.center(20), str(a1).center(8))
-        pprintf("GUID", "Unit No")
-        for cam in cams:
-            pprintf(cam['guid'], cam['unit'])
-        return None
-
-    guid = o.guid or cams[0]['guid']
-
-    mode = [ b(a) for a,b in zip(o.mode.split('x'), (int, int, str)) ] if \
-            o.mode is not None else None
-
-    camera = Camera(l, guid=guid, mode=mode, framerate=o.fps,
-                    shutter=o.shutter, gain=o.gain, isospeed = o.isospeed)
+    camera = Camera(context=c, guid=o.guid, mode=o.mode, rate=o.fps,
+                    shutter=o.shutter, gain=o.gain, iso_speed=o.isospeed)
+    camera.setup()
 
     return camera
