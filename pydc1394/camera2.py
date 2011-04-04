@@ -361,7 +361,7 @@ class Feature(object):
             return
         if mode is not None:
             self.mode = mode
-            if mode == "auto":
+            if mode == ("auto", "one_push"):
                 return
         for key, val in kwargs.items():
             if hasattr(self, key):
@@ -657,6 +657,16 @@ class Mode(object):
         """
         return bool(_dll.dc1394_is_video_mode_scalable(self._mode_id))
 
+    @property
+    def dtype(self):
+	"""
+	A suitable numpy dtype string for the image array data.
+	Read-only.
+	"""
+	if self.color_coding.endswith("16"):
+	    return ">u2"
+	else:
+	    return ">u1"
 
 class Exif(Mode):
     pass
@@ -1022,7 +1032,7 @@ class Camera(object):
         if iso_speed is not None:
             self.iso_speed = iso_speed
         if mode is not None:
-            self.mode = self._modes_dict[video_mode_codes[mode]]
+            self.mode = self._modes_dict[mode]
         if rate is not None:
             self.rate = rate
         self.setup(**features)
@@ -1277,7 +1287,7 @@ class Camera(object):
         _dll.dc1394_video_get_supported_modes(self._cam, byref(modes))
         modes = [_mode_map[i](self._cam, i)
                 for i in modes.modes[:modes.num]]
-        modes_dict = dict((m.mode_id, m) for m in modes)
+        modes_dict = dict((m.name, m) for m in modes)
         return modes, modes_dict
 
     @property
@@ -1394,7 +1404,7 @@ class Camera(object):
         """
         vmod = video_mode_t()
         _dll.dc1394_video_get_mode(self._cam, byref(vmod))
-        return self._modes_dict[vmod.value]
+        return self._modes_dict[video_mode_vals[vmod.value]]
 
     @mode.setter
     def mode(self, mode):
