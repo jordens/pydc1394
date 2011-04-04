@@ -138,50 +138,25 @@ def info(cam):
             unpack("4s", pack("!I", cam.get_register(r)))[0]
             for r in range(0x1f68, 0x1f80, 0x4))`
 
-
-def setup(cam, mode, gain, bright, shutter):
-    cam.mode = cam.modes[mode]
-    cam.trigger.active = False
-    cam.rate = max(cam.mode.rates)
-    # cam.set_register(0x1028, 2<<16) # extended shutter
-    cam.framerate.active = True
-    cam.framerate.mode = "manual"
-    cam.framerate.absolute_control = True
-    cam.framerate.absolute = max(cam.framerate.absolute_range)
-    cam.exposure.active = False
-    cam.shutter.active = True
-    cam.shutter.mode = "manual"
-    cam.shutter.absolute_control = True
-    sr = cam.shutter.absolute_range
-    cam.shutter.abolute = min(max(sr[0], shutter), sr[1])
-    cam.gain.active = True
-    cam.gain.mode = "manual"
-    cam.gain.absolute_control = True
-    cam.gain.absolute = gain
-    cam.gamma.active = False
-    cam.brightness.active = True
-    cam.brightness.mode = "manual"
-    cam.brightness.absolute_control = True
-    cam.brightness.absolute = bright
-
 def capture(cam, n, crop):
-    cam.start_capture(bufsize=6)
+    cam.start_capture()
     cam.flush()
-    cam.start_video()
+    cam.start_multi_shot(n+2) # one for corruption safety, one for dump
+    cam.dequeue().enqueue() # dump this
     ims = []
-    while len(ims) < n+1:
+    while len(ims) < n:
         im = cam.dequeue()
         if not im.corrupt:
             ims.append(im[crop:-crop, crop:-crop].copy())
         im.enqueue()
-    cam.stop_video()
+    cam.stop_multi_shot()
     cam.stop_capture()
-    return np.array(ims[1:])
+    return np.array(ims).astype("double")
 
 def noise_mean(ims):
     n = ims.shape[0]
-    mean = np.mean(ims, axis=0)
-    noise = .5*((ims[1:]-ims[:-1])**2).mean()
+    mean = ims.mean(axis=0)
+    noise = .5*((ims[1:]-ims[:-1])**2).mean(axis=0)
     return mean.ravel(), noise.ravel()
 
 def linear(x, y):
@@ -202,9 +177,14 @@ def affine(x, y):
     return Uncertain(off, off_err), Uncertain(slope, slope_err)
 
 def emva1288(cam, r=1e9):
+    cam.mode = cam.modes[3]
+    cam.setup(active=False, trigger=None, exposure=None, gamma=None,
+	    framerate=None)
+    cam.setup(gain=0., brightness=1., shutter=.13) # to fix shutter
+    cam.set_register(0x1028, 2<<16) # extended shutter
+    cam.rate = max(cam.mode.rates)
     dark, bright = [], []
-    setup(cam, mode=3, gain=0, bright=1, shutter=0.1) # to fix shutter
-    ts = np.r_[np.linspace(cam.shutter.absolute_range[0], 60e-3, 40)
+    ts = np.r_[np.linspace(cam.shutter.absolute_range[0], 130e-3, 50)
             ]#np.logspace(np.log10(cam.shutter.range[0]),
             #    np.log10(min(2, cam.shutter.range[1])), 10)]
     ts.sort()
@@ -212,25 +192,31 @@ def emva1288(cam, r=1e9):
         raw_input("prepare '%s', then press enter" % typ)
         for t in ts:
             print "t=%g" % t
-            setup(cam, mode=3, gain=0, bright=1, shutter=t)
-            ims = capture(cam, n=2, crop=10)
+	    cam.shutter.absolute = t
+            ims = capture(cam, n=2, crop=400)
             y0, sigma0 = noise_mean(ims)
+            for d in (y0, sigma0**.5):
+                print " mean=%g std=%g med=%g 1%%=%g 99%%=%g" % (
+			d.mean(), d.std(), np.median(d),
+			np.percentile(d, 1), np.percentile(d, 99))
             res.append((y0.mean(), sigma0.mean()))
 
     dark, bright = np.array(dark).T, np.array(bright).T
-    f = pl.figure()
-    for i,(x,y,t) in enumerate((
-            (r*ts, bright[0], "mu_y vs mu_p"),
-            (r*ts, bright[1], "sig_y_t vs mu_p"),
-            (ts, dark[0], "mu_y_d vs t"),
-            (ts, dark[1], "sig_y_d vs t"),
+    f = pl.figure(figsize=(15, 10))
+    for i,(x,y,yl,xl) in enumerate((
+            (r*ts, bright[0], "mu_y", "mu_p"),
+            (r*ts, bright[1], "sig_y_t", "mu_p"),
+            (ts, dark[0], "mu_y_d", "t"),
+            (ts, dark[1], "sig_y_d", "t"),
             (bright[0]-dark[0], bright[1]-dark[1],
-                "sig_y_t-sig_y_d vs mu_y-mu_y_t_d"),
-            (r*ts, bright[0]-dark[0],"mu_y-mu_y_d vs mu_p")),
+                "sig_y_t-sig_y_d", "mu_y-mu_y_t_d"),
+            (r*ts, bright[0]-dark[0], "mu_y-mu_y_d", "mu_p")),
             ):
         p = f.add_subplot(2, 3, i+1)
-        p.plot(x, y, "-x", label=t)
-        p.legend()
+        p.plot(x, y, "kx", label=t)
+	p.set_xlabel(xl)
+	p.set_ylabel(yl)
+        #p.legend()
     f.savefig("emva_%x.pdf" % cam.guid)
 
     ymax = float(1<<16)
@@ -250,12 +236,12 @@ def emva1288(cam, r=1e9):
     e = linear(k.value*r*ts, bright[0]-dark[0])
     print "total qe (e/p): %s" % e
     nd0, nd = affine(k.value*ts, dark[0])
-    print "dark current nd (e/s): %s" % nd
+    print "dark current (e/s): %s" % nd
     print "dark offset (e): %s" % (nd0/k)
-    nd0c, ndc = affine(k.value**2*ts, dark[1])
-    print "dark current comp ndc (e/s): %s" % ndc
-    print "dark offset comp (e): %s" % (nd0c/k**2)
-    pl.show()
+    nd0c, ndc = affine(k.value*ts, dark[1]/k.value)
+    print "dark current (compensated) (e/s): %s" % ndc
+    print "dark offset (compensated) (e): %s" % (nd0c/k)
+    #pl.show()
 
 
 
