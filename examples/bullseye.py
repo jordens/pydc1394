@@ -37,9 +37,6 @@ class Camera(HasTraits):
     auto_shutter = Button("Auto")
 
     pixelsize = Float(3.75)
-    #systemgain = Float(10.26/16)
-    #quantumefficiency = Float(0.026)
-    #wavelength = Float(313e-9)
 
     thread = Instance(Thread)
     active = Bool(False)
@@ -66,7 +63,7 @@ class Camera(HasTraits):
         self.mode = self.cam.modes_dict["FORMAT7_0"]
         self._do_mode_setup()
         self.cam.mode = self.mode
-        self.cam.setup(gamma=.5, framerate=1.,
+        self.cam.setup(gamma=.5, framerate=10.,
                 gain=self.gain, shutter=self.shutter)
         self.cam.setup(active=False, exposure=None, brightness=None)
 
@@ -132,12 +129,12 @@ class Camera(HasTraits):
             im = im_.astype("float")**2/256 # undo gamma
             im_.enqueue()
         else:
-            y, x = np.mgrid[:640,:480].astype("float")
-            x -= 300
-            y -= 200
-            a = -80./180.*np.pi
-            x, y = np.cos(a)*x+np.sin(a)*y, np.sin(a)*x-np.cos(a)*y
-            im = 50e3*np.exp(-x**2/20.**2/2.-y**2/30.**2/2.)
+            y, x = np.mgrid[:640,:480]
+            x -= 300.
+            y -= 200.
+            a = -10./180.*np.pi
+            x, y = np.cos(a)*x-np.sin(a)*y, np.sin(a)*x+np.cos(a)*y
+            im = 200*np.exp(-x**2/30.**2/2.-y**2/20.**2/2.)
         if self.average > 1 and self.im.shape == im.shape:
             self.im = self.im*(1-1./self.average) + im/self.average
         else:
@@ -173,18 +170,12 @@ class Analysis(HasTraits):
     background = Bool(False)
     leastsq = Bool(False)
 
-    left = Float(0)
-    right = Float(1280)
-    top = Float(960)
-    bottom = Float(0)
-
     x = Float
     y = Float
     t = Float
     e = Float
     a = Float
     b = Float
-    p = Float
 
     thread = Instance(Thread)
     active = Bool(False)
@@ -202,6 +193,7 @@ class Analysis(HasTraits):
 
     def update(self):
         im = self.data.get_data("img").astype("float32")
+        px = self.camera.pixelsize
 
         if self.background:
             #imr = im.ravel()
@@ -211,15 +203,10 @@ class Analysis(HasTraits):
             #im -= bg_mean
             im -= np.percentile(im, 10)
 
-        l = int(max(self.left, 0))
-        r = int(min(self.right, im.shape[1]-1))
-        b = int(max(self.bottom, 0))
-        t = int(min(self.top, im.shape[0]-1))
-        y, x = np.indices(im.shape).astype(float)*self.camera.pixelsize
-        x, y, im = x[b:t, l:r], y[b:t, l:r], im[b:t, l:r]
+        y, x = np.ogrid[:im.shape[0], :im.shape[1]]
 
-        self.data.set_data("x", x[0, :])
-        self.data.set_data("y", y[:, 0])
+        self.data.set_data("x", x[0, :]*px)
+        self.data.set_data("y", y[:, 0]*px)
         self.data.set_data("im_x", im.sum(axis=0))
         self.data.set_data("im_y", im.sum(axis=1))
 
@@ -230,24 +217,34 @@ class Analysis(HasTraits):
         y -= m01
         m20, m02 = (im*x**2).sum(), (im*y**2).sum()
         m11 = (im*x*y).sum()
-        q = ((m20-m02)**2+4*m11**2)**.5/(m20+m02)
-        a, b = (m20+m02)/2*(1+q), (m20+m02)/2*(1-q)
-        e = ((1-q)/(1+q))**.5
-        t = .5*np.arctan2(2*m11, m20-m02)
-        #x, y = x*np.cos(t)+y*np.sin(t), -x*np.sin(t)+y*np.cos(t)
-        #p = m00/((m20*m02)**.5*2*np.pi)
 
-        gx = m00*self.camera.pixelsize/(2*np.pi*m20)**.5*np.exp(-x[0, :]**2/m20/2)
-        gy = m00*self.camera.pixelsize/(2*np.pi*m02)**.5*np.exp(-y[:, 0]**2/m02/2)
+        g = np.sign(m20-m02)
+        if g == 0:
+            a = 2*2**.5*(m20+m02+2*np.abs(m11))**.5
+            b = 2*2**.5*(m20+m02-2*np.abs(m11))**.5
+            t = np.pi/4*np.sign(m11)
+        else:
+            q = g*((m20-m02)**2+4*m11**2)**.5
+            a = 2*2**.5*((m20+m02)+q)**.5
+            b = 2*2**.5*((m20+m02)-q)**.5
+            t = .5*np.arctan2(2*m11, m20-m02)
+        e = a/b
+        ab = 2*2**.5*(m20+m02)**.5
 
         self.x = m10
         self.y = m01
-        self.t = ((t/np.pi*180+90)%180)-90
-        self.a = 4*a**.5
-        self.b = 4*b**.5
+        self.t = t/np.pi*180
+        self.a = a*px
+        self.b = b*px
+        self.e = e
+
+        gx = 0*m00*self.camera.pixelsize/(2*np.pi*m20)**.5*np.exp(-x[:, 0]**2/m20/2)
+        gy = 0*m00*self.camera.pixelsize/(2*np.pi*m02)**.5*np.exp(-y[0, :]**2/m02/2)
 
         self.data.set_data("gauss_x", gx)
         self.data.set_data("gauss_y", gy)
+
+        return
 
         ts = np.linspace(0, 2*np.pi, 50)
         t = self.t/180*np.pi
@@ -271,16 +268,6 @@ class Analysis(HasTraits):
         self.data.set_data("yp_mark", 2*[max(ell2_y)])
         self.data.set_data("ym_mark", 2*[min(ell2_y)])
         self.data.set_data("y_bar", [0, max(self.data.get_data("im_y"))])
-
-        # print self.cam.gain.val, self.cam.shutter.val
-        # high = stats.scoreatpercentile(im.ravel(), 99)
-        # self.cam.shutter.val = self.cam.shutter.val/1000*(128/high)
-        # print self.cam.shutter.val
-
-        # noise = np.log(max(im+bg_std, 1e-10))-np.log(max(im-bg_std, 1e-10))
-        # weight = 1/noise
-        # weight[im<=0] = 0
-
 
     def run(self):
         print "start analysis"
@@ -313,8 +300,7 @@ class Bullseye(HasTraits):
                 Item("object.analysis.t", label="ang", format_str="%g", width=50),
                 Item("object.analysis.a", label="maj", format_str="%g", width=50),
                 Item("object.analysis.b", label="min", format_str="%g", width=50),
-                Item("object.analysis.e", label="ecc", format_str="%g", width=50),
-                Item("object.analysis.p", label="pow", format_str="%g", width=50),
+                Item("object.analysis.e", label="ell", format_str="%g", width=50),
                 springy=True, padding=0, style="readonly"),
             VGroup(HGroup("object.camera.shutter",
                         Item("object.camera.auto_shutter", show_label=False),
@@ -352,7 +338,8 @@ class Bullseye(HasTraits):
                 padding_top=0, padding_right=0,
                 use_backbuffer=True, fill_padding=True,
                 spacing=(0,0), halign="left", valign="bottom",
-                bgcolor="black", )
+                bgcolor="black",
+                )
         self.screen = Plot(self.data, bgcolor="black",
                 border_visible=True, border_color="white",
                 padding=0, resizable="hv",
@@ -371,8 +358,8 @@ class Bullseye(HasTraits):
                 border_visible=False, border_color="white")
         self.horiz.index_axis.visible = False
         self.horiz.value_axis.visible = False
-        self.horiz.index_grid.visible = False
-        self.horiz.value_grid.visible = False
+        self.horiz.index_grid.visible = True
+        self.horiz.value_grid.visible = True
         self.vert = Plot(self.data,
                 orientation="v",
                 resizable="v", padding=0, width=100,
@@ -380,22 +367,22 @@ class Bullseye(HasTraits):
                 border_visible=False, border_color="white")
         self.vert.index_axis.visible = False
         self.vert.value_axis.visible = False
-        self.vert.index_grid.visible = False
-        self.vert.value_grid.visible = False
+        self.vert.index_grid.visible = True
+        self.vert.value_grid.visible = True
 
         self.mini = VPlotContainer(
                 width=100, height=100, resizable="",
                 padding=0, fill_padding=False, bgcolor="black")
         self.plots.component_grid = [
-                [self.horiz, self.mini],
-                [self.screen, self.vert]]
+                [self.vert, self.screen],
+                [self.mini, self.horiz]]
         self.horiz.index_range = self.screen.index_range
         self.vert.index_range = self.screen.value_range
         self.screen.overlays.append(ZoomTool(self.screen,
             tool_mode="box"))
         self.screen.tools.append(PanTool(self.screen))
         self.plots.tools.append(SaveTool(self.plots,
-            filename="qo-bullseye.png"))
+            filename="bullseye.png"))
         i = self.screen.img_plot("img", name="img",
                 interpolation="nearest",
                 colormap=color_map_name_dict["gray"],
@@ -470,8 +457,8 @@ class Bullseye(HasTraits):
 
 def main():
     logging.basicConfig(level=logging.WARNING)
-    b = Bullseye("first:")
-    #b = Bullseye("none:")
+    #b = Bullseye("first:")
+    b = Bullseye("none:")
     #b = Bullseye("guid:b09d01009981f9")
     b.configure_traits()
     b.close()
