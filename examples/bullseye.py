@@ -4,9 +4,9 @@
 
 from traits.api import (HasTraits, Range, Float, Enum,
         on_trait_change, TraitError,
-	Property, Instance, Button, Bool, Int, Button)
+        Property, Instance, Button, Bool, Int, Button)
 from traitsui.api import (View, Item, HGroup, VGroup,
-	DefaultOverride)
+        DefaultOverride)
 
 from chaco.api import (Plot, ArrayPlotData, color_map_name_dict,
         GridPlotContainer, VPlotContainer)
@@ -63,11 +63,11 @@ class Camera(HasTraits):
             self.setup()
 
     def setup(self):
-	self.mode = self.cam.modes_dict["FORMAT7_0"]
-	self._do_mode_setup()
+        self.mode = self.cam.modes_dict["FORMAT7_0"]
+        self._do_mode_setup()
         self.cam.mode = self.mode
-	self.cam.setup(gamma=.5, framerate=1.,
-		gain=self.gain, shutter=self.shutter)
+        self.cam.setup(gamma=.5, framerate=1.,
+                gain=self.gain, shutter=self.shutter)
         self.cam.setup(active=False, exposure=None, brightness=None)
 
     def start(self):
@@ -96,41 +96,41 @@ class Camera(HasTraits):
 
     @on_trait_change("width, height, left, top")
     def _do_mode_setup(self):
-	self.mode.setup(image_size=(self.width, self.height),
-		image_position=(self.left, self.top), color_coding="Y8")
+        self.mode.setup(image_size=(self.width, self.height),
+                image_position=(self.left, self.top), color_coding="Y8")
 
     @on_trait_change("auto_shutter")
     def _do_auto_shutter(self):
-	ac = self.active
-	self.active = False
-	fr = self.cam.framerate.absolute
-	self.cam.framerate.absolute = max(self.cam.framerate.absolute_range)
-	self.start()
-	while True:
-	    self.update()
+        ac = self.active
+        self.active = False
+        fr = self.cam.framerate.absolute
+        self.cam.framerate.absolute = max(self.cam.framerate.absolute_range)
+        self.start()
+        while True:
+            self.update()
             p = np.percentile(self.im, 99)
-	    print "99 percentile is %g," % p,
-	    try:
-		if p > .75*256:
-		    self.shutter *= .8
-		    print "decreasing shutter to %g" % self.shutter
-		elif p < .5*256:
-		    self.shutter /= .8
-		    print "increasing shutter to %g" % self.shutter
-		else:
-		    print "leaving shutter at %g" % self.shutter
-		    break
-	    except TraitError:
-		break
+            print "99 percentile is %g," % p,
+            try:
+                if p > .75*256:
+                    self.shutter *= .8
+                    print "decreasing shutter to %g" % self.shutter
+                elif p < .5*256:
+                    self.shutter /= .8
+                    print "increasing shutter to %g" % self.shutter
+                else:
+                    print "leaving shutter at %g" % self.shutter
+                    break
+            except TraitError:
+                break
         self.stop()
-	self.cam.framerate.absolute = fr
-	self.active = ac
+        self.cam.framerate.absolute = fr
+        self.active = ac
 
     def update(self):
         if self.cam:
             im_ = self.cam.dequeue()
-	    im = im_.astype("float")**2/256 # undo gamma
-	    im_.enqueue()
+            im = im_.astype("float")**2/256 # undo gamma
+            im_.enqueue()
         else:
             y, x = np.mgrid[:640,:480].astype("float")
             x -= 300
@@ -138,10 +138,10 @@ class Camera(HasTraits):
             a = -80./180.*np.pi
             x, y = np.cos(a)*x+np.sin(a)*y, np.sin(a)*x-np.cos(a)*y
             im = 50e3*np.exp(-x**2/20.**2/2.-y**2/30.**2/2.)
-	if self.average > 1 and self.im.shape == im.shape:
+        if self.average > 1 and self.im.shape == im.shape:
             self.im = self.im*(1-1./self.average) + im/self.average
-	else:
-	    self.im = im
+        else:
+            self.im = im
         self.data.set_data("img", self.im)
 
     @on_trait_change("active")
@@ -155,8 +155,8 @@ class Camera(HasTraits):
                 self.thread = Thread(target=self.run)
                 self.thread.start()
         else:
-	    if self.thread is not None:
-		self.thread.join()
+            if self.thread is not None:
+                self.thread.join()
                 self.thread = None
 
     def run(self):
@@ -209,7 +209,7 @@ class Analysis(HasTraits):
             #bg = imr[np.where(imr <= low)]
             #bg_mean = bg.mean()
             #im -= bg_mean
-	    im -= np.percentile(im, 10)
+            im -= np.percentile(im, 10)
 
         l = int(max(self.left, 0))
         r = int(min(self.right, im.shape[1]-1))
@@ -317,14 +317,14 @@ class Bullseye(HasTraits):
                 Item("object.analysis.p", label="pow", format_str="%g", width=50),
                 springy=True, padding=0, style="readonly"),
             VGroup(HGroup("object.camera.shutter",
-			Item("object.camera.auto_shutter", show_label=False),
+                        Item("object.camera.auto_shutter", show_label=False),
                         "object.camera.gain",
                         "object.camera.average"),
-		  HGroup(
-		      Item("object.camera.width", editor=slider_editor),
-		      Item("object.camera.height", editor=slider_editor),
-		      Item("object.camera.left", editor=slider_editor),
-		      Item("object.camera.top", editor=slider_editor)),
+                  HGroup(
+                      Item("object.camera.width", editor=slider_editor),
+                      Item("object.camera.height", editor=slider_editor),
+                      Item("object.camera.left", editor=slider_editor),
+                      Item("object.camera.top", editor=slider_editor)),
                    HGroup(Item("object.camera.active", label="capture"),
                        Item("object.analysis.active", label="process"),
                        "object.analysis.background",
@@ -392,7 +392,7 @@ class Bullseye(HasTraits):
         self.horiz.index_range = self.screen.index_range
         self.vert.index_range = self.screen.value_range
         self.screen.overlays.append(ZoomTool(self.screen,
-	    tool_mode="box"))
+            tool_mode="box"))
         self.screen.tools.append(PanTool(self.screen))
         self.plots.tools.append(SaveTool(self.plots,
             filename="qo-bullseye.png"))
