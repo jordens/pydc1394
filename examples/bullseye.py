@@ -2,17 +2,17 @@
 # (c) Robert Jordens <jordens@debian.org>
 # GPL-2
 
-from enthought.traits.api import (HasTraits, Range, Float, Enum,
+from traits.api import (HasTraits, Range, Float, Enum,
         on_trait_change, TraitError,
 	Property, Instance, Button, Bool, Int, Button)
-from enthought.traits.ui.api import (View, Item, HGroup, VGroup,
+from traitsui.api import (View, Item, HGroup, VGroup,
 	DefaultOverride)
 
-from enthought.chaco.api import (Plot, ArrayPlotData, color_map_name_dict,
+from chaco.api import (Plot, ArrayPlotData, color_map_name_dict,
         GridPlotContainer, VPlotContainer)
-from enthought.chaco.tools.api import (PanTool, ZoomTool, RectZoomTool,
+from chaco.tools.api import (PanTool, ZoomTool, 
         SaveTool)
-from enthought.chaco.tools.image_inspector_tool import (
+from chaco.tools.image_inspector_tool import (
         ImageInspectorTool, ImageInspectorOverlay)
 
 from enthought.enable.component_editor import ComponentEditor
@@ -21,22 +21,10 @@ from enthought.pyface.timer.api import Timer
 
 from pydc1394.camera2 import Camera as DC1394Camera
 
-from qo import constants, fitting
-
 import urlparse, logging
 import numpy as np
 from scipy import stats, optimize
 from threading import Thread
-
-
-class Gauss2D(fitting.FitFunction):
-    name = "2d gaussian"
-    def __call__(self, (x, y), x0, y0, wa, wb, a, t, o):
-        x = x-x0
-        y = y-y0
-        x, y = np.cos(t)*x+np.sin(t)*y, -np.sin(t)*x+np.cos(t)*y
-        a = a/(abs(wa)*abs(wb)*2*np.pi)
-        return o+a*np.exp(-(x/wa)**2/2-(y/wb)**2/2)
 
 
 class Camera(HasTraits):
@@ -49,23 +37,17 @@ class Camera(HasTraits):
     auto_shutter = Button("Auto")
 
     pixelsize = Float(3.75)
-    systemgain = Float(10.26/16)
-    quantumefficiency = Float(0.026)
-    wavelength = Float(313e-9)
+    #systemgain = Float(10.26/16)
+    #quantumefficiency = Float(0.026)
+    #wavelength = Float(313e-9)
 
     thread = Instance(Thread)
     active = Bool(False)
-
-    w_per_dn = Property(depends_on="systemgain, quantumefficiency")
 
     width = Range(8, 1280, 640)
     height = Range(2, 960, 480)
     left = Range(0, 1280-8, 200)
     top = Range(0, 960-2, 200)
-
-    def _get_w_per_dn(self):
-        return (1./self.systemgain/self.quantumefficiency/
-                self.shutter*constants.h*constants.c/self.wavelength)
 
     def __init__(self, uri, **k):
         super(Camera, self).__init__(**k)
@@ -255,35 +237,14 @@ class Analysis(HasTraits):
         #x, y = x*np.cos(t)+y*np.sin(t), -x*np.sin(t)+y*np.cos(t)
         #p = m00/((m20*m02)**.5*2*np.pi)
 
-        if self.leastsq:
-            try:
-                gs = Gauss2D()
-                c2, p = gs.run((x, y), im,
-                        (1., 1., a**.5, b**.5, 1., t, 10.),
-                        ftol=1e-4, xtol=1e-3, gtol=1e-7)
-                p = map(float, p)
-                g = gs((x, y), *p)
-                gx = m00*g.sum(axis=0)
-                gy = m00*g.sum(axis=1)
-                x0, y0, a, b, p, t, o = p
-                m10 += x0
-                m01 += y0
-                e = abs(b/a)
-                a = a**2
-                b = b**2
-                m00 *= abs(p)
-            except ValueError, e:
-                print e
-        else:
-            gx = m00*self.camera.pixelsize/(2*np.pi*m20)**.5*np.exp(-x[0, :]**2/m20/2)
-            gy = m00*self.camera.pixelsize/(2*np.pi*m02)**.5*np.exp(-y[:, 0]**2/m02/2)
+        gx = m00*self.camera.pixelsize/(2*np.pi*m20)**.5*np.exp(-x[0, :]**2/m20/2)
+        gy = m00*self.camera.pixelsize/(2*np.pi*m02)**.5*np.exp(-y[:, 0]**2/m02/2)
 
         self.x = m10
         self.y = m01
         self.t = ((t/np.pi*180+90)%180)-90
         self.a = 4*a**.5
         self.b = 4*b**.5
-        self.p = m00*self.camera.w_per_dn
 
         self.data.set_data("gauss_x", gx)
         self.data.set_data("gauss_y", gy)
@@ -386,7 +347,6 @@ class Bullseye(HasTraits):
         self.analysis.data = self.data
         self.analysis.camera = self.camera
 
-
         self.plots = GridPlotContainer(shape=(2,2),
                 padding_left=40, padding_bottom=20,
                 padding_top=0, padding_right=0,
@@ -431,8 +391,8 @@ class Bullseye(HasTraits):
                 [self.screen, self.vert]]
         self.horiz.index_range = self.screen.index_range
         self.vert.index_range = self.screen.value_range
-        self.screen.overlays.append(RectZoomTool(self.screen,
-            drag_button="right"))
+        self.screen.overlays.append(ZoomTool(self.screen,
+	    tool_mode="box"))
         self.screen.tools.append(PanTool(self.screen))
         self.plots.tools.append(SaveTool(self.plots,
             filename="qo-bullseye.png"))
