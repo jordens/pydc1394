@@ -8,6 +8,11 @@ from traits.api import (HasTraits, Range, Float, Enum,
 from traitsui.api import (View, Item, HGroup, VGroup,
         DefaultOverride)
 
+# fix window color on unity
+from traitsui.wx import constants
+import wx
+constants.WindowColor = wx.NullColor
+
 from chaco.api import (Plot, ArrayPlotData, color_map_name_dict,
         GridPlotContainer, VPlotContainer)
 from chaco.tools.api import (PanTool, ZoomTool, 
@@ -33,6 +38,7 @@ class Camera(HasTraits):
     shutter = Range(1e-5, 100e-3, 1e-3)
     gain = Range(0., 24., 0.)
     average = Range(1, 10, 1)
+    framerate = Range(1, 10, 2)
 
     auto_shutter = Button("Auto")
 
@@ -44,7 +50,7 @@ class Camera(HasTraits):
     width = Range(8, 1280, 640)
     height = Range(2, 960, 480)
     left = Range(0, 1280-8, 200)
-    top = Range(0, 960-2, 200)
+    bottom = Range(0, 960-2, 200)
 
     def __init__(self, uri, **k):
         super(Camera, self).__init__(**k)
@@ -63,7 +69,7 @@ class Camera(HasTraits):
         self.mode = self.cam.modes_dict["FORMAT7_0"]
         self._do_mode_setup()
         self.cam.mode = self.mode
-        self.cam.setup(gamma=.5, framerate=10.,
+        self.cam.setup(gamma=.5, framerate=self.framerate,
                 gain=self.gain, shutter=self.shutter)
         self.cam.setup(active=False, exposure=None, brightness=None)
 
@@ -79,6 +85,10 @@ class Camera(HasTraits):
         self.cam.stop_video()
         self.cam.stop_capture()
 
+    @on_trait_change("framerate")
+    def _do_framerate(self, val):
+        self.cam.framerate.absolute = val
+
     @on_trait_change("shutter")
     def _do_shutter(self, val):
         self.cam.shutter.absolute = val
@@ -91,50 +101,72 @@ class Camera(HasTraits):
     def _do_gain(self, val):
         self.cam.gain.absolute = val
 
-    @on_trait_change("width, height, left, top")
+    @on_trait_change("width, height, left, bottom")
     def _do_mode_setup(self):
-        self.mode.setup(image_size=(self.width, self.height),
-                image_position=(self.left, self.top), color_coding="Y8")
+        self.mode.setup(
+                image_size=(self.width, self.height),
+                image_position=(self.left, 960-self.height-self.bottom),
+                #image_position=(self.left, self.bottom),
+                color_coding="Y8")
 
     @on_trait_change("auto_shutter")
     def _do_auto_shutter(self):
         ac = self.active
-        self.active = False
         fr = self.cam.framerate.absolute
-        self.cam.framerate.absolute = max(self.cam.framerate.absolute_range)
+        self.active = False
+        self.cam.framerate.absolute = max(
+                self.cam.framerate.absolute_range)
         self.start()
-        while True:
-            self.update()
-            p = np.percentile(self.im, 99)
-            print "99 percentile is %g," % p,
+        for i in range(20):
+            im_ = self.cam.dequeue()
+            im = np.array(im_).copy()
+            im_.enqueue()
+            im = im.astype("float32")**2/256 # undo gamma
+            p = np.percentile(im, 99)
+            print "1%%>%g:" % p,
             try:
                 if p > .75*256:
                     self.shutter *= .8
-                    print "decreasing shutter to %g" % self.shutter
-                elif p < .5*256:
+                    print "t-%g" % self.shutter
+                elif p < .25*256:
                     self.shutter /= .8
-                    print "increasing shutter to %g" % self.shutter
+                    print "t+%g" % self.shutter
                 else:
-                    print "leaving shutter at %g" % self.shutter
+                    print "t=%g" % self.shutter
                     break
+                # ensure all frames with old settings are gone
+                self.cam.flush()
+                self.cam.dequeue().enqueue()
             except TraitError:
                 break
         self.stop()
+        # revert framerate and active state
         self.cam.framerate.absolute = fr
         self.active = ac
 
     def update(self):
         if self.cam:
             im_ = self.cam.dequeue()
-            im = im_.astype("float")**2/256 # undo gamma
+            im = np.array(im_).copy()
             im_.enqueue()
+            im = im.astype("float32")**2/256 # undo gamma
         else:
-            y, x = np.mgrid[:640,:480]
-            x -= 300.
-            y -= 200.
-            a = -10./180.*np.pi
-            x, y = np.cos(a)*x-np.sin(a)*y, np.sin(a)*x+np.cos(a)*y
-            im = 200*np.exp(-x**2/30.**2/2.-y**2/20.**2/2.)
+            px = self.pixelsize
+            w, h = self.width, self.height
+            l, b = self.left, self.bottom
+            y, x = np.mgrid[b:b+h, l:l+w]
+            x *= px
+            y *= px
+            x -= 1.1e3
+            y -= 1.2e3
+            t = 13./180.*np.pi
+            a = 140/4
+            b = 150/4
+            h = 200
+            x, y = np.cos(t)*x+np.sin(t)*y, -np.sin(t)*x+np.cos(t)*y
+            im = h*np.exp(-x**2/a**2/2.-y**2/b**2/2.)
+            im *= 1+np.random.randn(*im.shape)*.2
+            #im += np.random.randn(im.shape)*30
         if self.average > 1 and self.im.shape == im.shape:
             self.im = self.im*(1-1./self.average) + im/self.average
         else:
@@ -168,7 +200,6 @@ class Camera(HasTraits):
 
 class Analysis(HasTraits):
     background = Bool(False)
-    leastsq = Bool(False)
 
     x = Float
     y = Float
@@ -192,8 +223,10 @@ class Analysis(HasTraits):
                 self.thread.start()
 
     def update(self):
-        im = self.data.get_data("img").astype("float32")
+        im = self.data.get_data("img").copy()
         px = self.camera.pixelsize
+        w, h = self.camera.width, self.camera.height
+        l, b = self.camera.left, self.camera.bottom
 
         if self.background:
             #imr = im.ravel()
@@ -203,12 +236,16 @@ class Analysis(HasTraits):
             #im -= bg_mean
             im -= np.percentile(im, 10)
 
-        y, x = np.ogrid[:im.shape[0], :im.shape[1]]
+        y, x = np.ogrid[b:b+h, l:l+w]
+        x *= px
+        y *= px
 
-        self.data.set_data("x", x[0, :]*px)
-        self.data.set_data("y", y[:, 0]*px)
-        self.data.set_data("im_x", im.sum(axis=0))
-        self.data.set_data("im_y", im.sum(axis=1))
+        self.data.set_data("x", x[0, :].copy())
+        self.data.set_data("y", y[:, 0].copy())
+        self.data.set_data("xbounds", np.r_[x[0, :], (l+w)*px])
+        self.data.set_data("ybounds", np.r_[y[:, 0], (b+h)*px])
+        self.data.set_data("imx", im.sum(axis=0))
+        self.data.set_data("imy", im.sum(axis=1))
 
         m00 = im.sum()
         im /= m00
@@ -234,12 +271,13 @@ class Analysis(HasTraits):
         self.x = m10
         self.y = m01
         self.t = t/np.pi*180
-        self.a = a*px
-        self.b = b*px
+        self.a = a
+        self.b = b
         self.e = e
 
-        gx = 0*m00*self.camera.pixelsize/(2*np.pi*m20)**.5*np.exp(-x[:, 0]**2/m20/2)
-        gy = 0*m00*self.camera.pixelsize/(2*np.pi*m02)**.5*np.exp(-y[0, :]**2/m02/2)
+        
+        gx = m00*self.camera.pixelsize/(2*np.pi*m20)**.5*np.exp(-x[:, 0]**2/m20/2)
+        gy = m00*self.camera.pixelsize/(2*np.pi*m02)**.5*np.exp(-y[0, :]**2/m02/2)
 
         self.data.set_data("gauss_x", gx)
         self.data.set_data("gauss_y", gy)
@@ -263,11 +301,11 @@ class Analysis(HasTraits):
         self.data.set_data("x0_mark", 2*[self.x])
         self.data.set_data("xp_mark", 2*[max(ell2_x)])
         self.data.set_data("xm_mark", 2*[min(ell2_x)])
-        self.data.set_data("x_bar", [0, max(self.data.get_data("im_x"))])
+        self.data.set_data("x_bar", [0, max(self.data.get_data("imx"))])
         self.data.set_data("y0_mark", 2*[self.y])
         self.data.set_data("yp_mark", 2*[max(ell2_y)])
         self.data.set_data("ym_mark", 2*[min(ell2_y)])
-        self.data.set_data("y_bar", [0, max(self.data.get_data("im_y"))])
+        self.data.set_data("y_bar", [0, max(self.data.get_data("imy"))])
 
     def run(self):
         print "start analysis"
@@ -292,31 +330,35 @@ class Bullseye(HasTraits):
     palette = Enum("gray", "jet", "cool", "hot", "prism", "hsv")
 
     traits_view = View(HGroup(
-        VGroup(Item("plots", editor=ComponentEditor(),
+        VGroup(
+            VGroup(
+                Item("object.analysis.x", label="Centroid X", format_str="%g"),
+                Item("object.analysis.y", label="Centroid Y", format_str="%g"),
+                Item("object.analysis.t", label="Angle", format_str="%g"),
+                Item("object.analysis.a", label="Major axis (4w)", format_str="%g"),
+                Item("object.analysis.b", label="Minor axis (4w)", format_str="%g"),
+                Item("object.analysis.e", label="Ellipticity", format_str="%g"),
+                style="readonly"),
+            VGroup(HGroup(
+                "object.camera.shutter",
+                Item("object.camera.auto_shutter", show_label=False)),
+                "object.camera.gain",
+                "object.camera.framerate",
+                "object.camera.average"),
+               HGroup(
+                      "object.camera.width",
+                      "object.camera.height",
+                      "object.camera.left",
+                      "object.camera.bottom", style="readonly"),
+            VGroup(HGroup(
+                Item("object.camera.active", label="Capture"),
+                Item("object.analysis.active", label="Process")),
+                   HGroup(
+                "object.analysis.background",
+                "palette"),),
+            ),
+        Item("plots", editor=ComponentEditor(),
             show_label=False),
-            HGroup(
-                Item("object.analysis.x", label="x0", format_str="%g", width=50),
-                Item("object.analysis.y", label="y0", format_str="%g", width=50),
-                Item("object.analysis.t", label="ang", format_str="%g", width=50),
-                Item("object.analysis.a", label="maj", format_str="%g", width=50),
-                Item("object.analysis.b", label="min", format_str="%g", width=50),
-                Item("object.analysis.e", label="ell", format_str="%g", width=50),
-                springy=True, padding=0, style="readonly"),
-            VGroup(HGroup("object.camera.shutter",
-                        Item("object.camera.auto_shutter", show_label=False),
-                        "object.camera.gain",
-                        "object.camera.average"),
-                  HGroup(
-                      Item("object.camera.width", editor=slider_editor),
-                      Item("object.camera.height", editor=slider_editor),
-                      Item("object.camera.left", editor=slider_editor),
-                      Item("object.camera.top", editor=slider_editor)),
-                   HGroup(Item("object.camera.active", label="capture"),
-                       Item("object.analysis.active", label="process"),
-                       "object.analysis.background",
-                       "object.analysis.leastsq",
-                       "palette"),),
-        ),
         ), resizable=True, title='Bullseye')
 
     def __init__(self, uri="first:", **k):
@@ -332,9 +374,10 @@ class Bullseye(HasTraits):
         self.analysis = Analysis()
         self.analysis.data = self.data
         self.analysis.camera = self.camera
+        self.analysis.update()
 
         self.plots = GridPlotContainer(shape=(2,2),
-                padding_left=40, padding_bottom=20,
+                padding_left=0, padding_bottom=0,
                 padding_top=0, padding_right=0,
                 use_backbuffer=True, fill_padding=True,
                 spacing=(0,0), halign="left", valign="bottom",
@@ -373,17 +416,28 @@ class Bullseye(HasTraits):
         self.mini = VPlotContainer(
                 width=100, height=100, resizable="",
                 padding=0, fill_padding=False, bgcolor="black")
+
         self.plots.component_grid = [
                 [self.vert, self.screen],
                 [self.mini, self.horiz]]
         self.horiz.index_range = self.screen.index_range
         self.vert.index_range = self.screen.value_range
+
         self.screen.overlays.append(ZoomTool(self.screen,
-            tool_mode="box"))
+            tool_mode="box", alpha=.3,
+            always_on_modifier="shift",
+            always_on=False,
+            x_max_zoom_factor=1e2,
+            y_max_zoom_factor=1e2,
+            x_min_zoom_factor=1,
+            y_min_zoom_factor=1,
+            zoom_factor=1.2))
         self.screen.tools.append(PanTool(self.screen))
         self.plots.tools.append(SaveTool(self.plots,
             filename="bullseye.png"))
+
         i = self.screen.img_plot("img", name="img",
+                xbounds="xbounds", ybounds="ybounds",
                 interpolation="nearest",
                 colormap=color_map_name_dict["gray"],
                 )[0]
@@ -396,11 +450,9 @@ class Bullseye(HasTraits):
             font="modern 10")
         i.overlays.append(o)
 
-        self.analysis.update()
-
-        self.horiz.plot(("x", "im_x"), type="line", color="red")
+        self.horiz.plot(("x", "imx"), type="line", color="red")
         self.horiz.plot(("x", "gauss_x"), type="line", color="blue")
-        self.vert.plot(("y", "im_y"), type="line", color="red")
+        self.vert.plot(("y", "imy"), type="line", color="red")
         self.vert.plot(("y", "gauss_y"), type="line", color="blue")
 
         return
@@ -431,22 +483,6 @@ class Bullseye(HasTraits):
     def close(self):
         self.camera.active = False
         self.analysis.active = False
-
-    @on_trait_change("screen.index_mapper.range.low")
-    def _up_low(self, val):
-        self.analysis.left = val
-
-    @on_trait_change("screen.index_mapper.range.high")
-    def _up_low(self, val):
-        self.analysis.right = val
-
-    @on_trait_change("screen.value_mapper.range.low")
-    def _up_low(self, val):
-        self.analysis.bottom = val
-
-    @on_trait_change("screen.value_mapper.range.high")
-    def _up_low(self, val):
-        self.analysis.top = val
 
     @on_trait_change("palette")
     def set_colormap(self):

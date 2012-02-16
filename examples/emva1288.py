@@ -179,7 +179,7 @@ def affine(x, y):
 def emva1288(cam, r=1e9):
     cam.mode = cam.modes[3]
     cam.setup(active=False, trigger=None, exposure=None, gamma=None,
-	    framerate=None)
+            framerate=None)
     cam.setup(gain=0., brightness=1., shutter=.13) # to fix shutter
     cam.set_register(0x1028, 2<<16) # extended shutter
     cam.rate = max(cam.mode.rates)
@@ -192,13 +192,13 @@ def emva1288(cam, r=1e9):
         raw_input("prepare '%s', then press enter" % typ)
         for t in ts:
             print "t=%g" % t
-	    cam.shutter.absolute = t
+            cam.shutter.absolute = t
             ims = capture(cam, n=2, crop=400)
             y0, sigma0 = noise_mean(ims)
             for d in (y0, sigma0**.5):
                 print " mean=%g std=%g med=%g 1%%=%g 99%%=%g" % (
-			d.mean(), d.std(), np.median(d),
-			np.percentile(d, 1), np.percentile(d, 99))
+                        d.mean(), d.std(), np.median(d),
+                        np.percentile(d, 1), np.percentile(d, 99))
             res.append((y0.mean(), sigma0.mean()))
 
     dark, bright = np.array(dark).T, np.array(bright).T
@@ -214,8 +214,8 @@ def emva1288(cam, r=1e9):
             ):
         p = f.add_subplot(2, 3, i+1)
         p.plot(x, y, "kx", label=t)
-	p.set_xlabel(xl)
-	p.set_ylabel(yl)
+        p.set_xlabel(xl)
+        p.set_ylabel(yl)
         #p.legend()
     f.savefig("emva_%x.pdf" % cam.guid)
 
