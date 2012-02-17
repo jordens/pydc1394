@@ -3,9 +3,9 @@
 # GPL-2
 
 from traits.api import (HasTraits, Range, Float, Enum,
-        on_trait_change, TraitError,
+        on_trait_change, TraitError, ListInt,
         Property, Instance, Button, Bool, Int, Button)
-from traitsui.api import (View, Item, HGroup, VGroup,
+from traitsui.api import (View, Item, UItem, HGroup, VGroup,
         DefaultOverride)
 
 # fix window color on unity
@@ -14,7 +14,7 @@ import wx
 constants.WindowColor = wx.NullColor
 
 from chaco.api import (Plot, ArrayPlotData, color_map_name_dict,
-        GridPlotContainer, VPlotContainer)
+        GridPlotContainer, VPlotContainer, HPlotContainer)
 from chaco.tools.api import (PanTool, ZoomTool, 
         SaveTool)
 from chaco.tools.image_inspector_tool import (
@@ -24,12 +24,17 @@ from enthought.enable.component_editor import ComponentEditor
 
 from enthought.pyface.timer.api import Timer
 
+from PIL import Image
+
 from pydc1394.camera2 import Camera as DC1394Camera
 
 import urlparse, logging
 import numpy as np
 from scipy import stats, optimize
 from threading import Thread
+
+
+    
 
 
 class Camera(HasTraits):
@@ -47,10 +52,7 @@ class Camera(HasTraits):
     thread = Instance(Thread)
     active = Bool(False)
 
-    width = Range(8, 1280, 640)
-    height = Range(2, 960, 480)
-    left = Range(0, 1280-8, 200)
-    bottom = Range(0, 960-2, 200)
+    roi = ListInt([0, 0, 1280, 960], minlen=4, maxlen=4)
 
     def __init__(self, uri, **k):
         super(Camera, self).__init__(**k)
@@ -101,12 +103,12 @@ class Camera(HasTraits):
     def _do_gain(self, val):
         self.cam.gain.absolute = val
 
-    @on_trait_change("width, height, left, bottom")
+    @on_trait_change("roi")
     def _do_mode_setup(self):
+        l, b, w, h = self.roi
         self.mode.setup(
-                image_size=(self.width, self.height),
-                image_position=(self.left, 960-self.height-self.bottom),
-                #image_position=(self.left, self.bottom),
+                image_size=(w, h),
+                image_position=(l, 960-h-b),
                 color_coding="Y8")
 
     @on_trait_change("auto_shutter")
@@ -149,19 +151,19 @@ class Camera(HasTraits):
             im_ = self.cam.dequeue()
             im = np.array(im_).copy()
             im_.enqueue()
-            im = im.astype("float32")**2/256 # undo gamma
+            im = np.nan_to_num(im.astype("float32")**2/256) # undo gamma
+            print im.shape, self.roi, self.cam.mode.roi
         else:
             px = self.pixelsize
-            w, h = self.width, self.height
-            l, b = self.left, self.bottom
+            l, b, w, h = self.roi
             y, x = np.mgrid[b:b+h, l:l+w]
             x *= px
             y *= px
             x -= 1.1e3
             y -= 1.2e3
-            t = 13./180.*np.pi
-            a = 140/4
-            b = 150/4
+            t = 15./180.*np.pi
+            b = 150/4.
+            a = 250/4.
             h = 200
             x, y = np.cos(t)*x+np.sin(t)*y, -np.sin(t)*x+np.cos(t)*y
             im = h*np.exp(-x**2/a**2/2.-y**2/b**2/2.)
@@ -225,8 +227,7 @@ class Analysis(HasTraits):
     def update(self):
         im = self.data.get_data("img").copy()
         px = self.camera.pixelsize
-        w, h = self.camera.width, self.camera.height
-        l, b = self.camera.left, self.camera.bottom
+        l, b, w, h = self.camera.roi
 
         if self.background:
             #imr = im.ravel()
@@ -237,17 +238,15 @@ class Analysis(HasTraits):
             im -= np.percentile(im, 10)
 
         y, x = np.ogrid[b:b+h, l:l+w]
-        x *= px
-        y *= px
 
-        self.data.set_data("x", x[0, :].copy())
-        self.data.set_data("y", y[:, 0].copy())
-        self.data.set_data("xbounds", np.r_[x[0, :], (l+w)*px])
-        self.data.set_data("ybounds", np.r_[y[:, 0], (b+h)*px])
+        self.data.set_data("x", x[0, :]*px)
+        self.data.set_data("y", y[:, 0]*px)
+        self.data.set_data("xbounds", (np.r_[x[0, :], (l+w)]-.5)*px)
+        self.data.set_data("ybounds", (np.r_[y[:, 0], (b+h)]-.5)*px)
         self.data.set_data("imx", im.sum(axis=0))
         self.data.set_data("imy", im.sum(axis=1))
 
-        m00 = im.sum()
+        m00 = im.sum() or 1.
         im /= m00
         m10, m01 = (im*x).sum(), (im*y).sum()
         x -= m10
@@ -268,21 +267,39 @@ class Analysis(HasTraits):
         e = a/b
         ab = 2*2**.5*(m20+m02)**.5
 
-        self.x = m10
-        self.y = m01
+        self.x = m10*px
+        self.y = m01*px
         self.t = t/np.pi*180
-        self.a = a
-        self.b = b
+        self.a = a*px
+        self.b = b*px
         self.e = e
 
+        # PIL.Image.rotate() appears to be not norm-conserving:
+        # import numpy as np
+        # from PIL import Image
+        # m = np.arange(100).reshape((10, 10)).astype("float")
+        # im = Image.fromarray(m)
+        # im2 = im.rotate(angle=10., resample=Image.BILINEAR, expand=True)
+        # np.array(im).sum(), np.array(im2).sum()
+        # (4950.0, 4999.5005)
+        imr = np.array(Image.fromarray(im).rotate(angle=np.rad2deg(t),
+            resample=Image.NEAREST, expand=True))
+       
+        self.data.set_data("ima", imr.sum(axis=0))
+        self.data.set_data("imb", imr.sum(axis=1))
+        b, a = np.ogrid[:imr.shape[0], :imr.shape[1]]
+
+        self.data.set_data("a", a[0, :]*px)
+        self.data.set_data("b", b[:, 0]*px)
         
+        return
+
         gx = m00*self.camera.pixelsize/(2*np.pi*m20)**.5*np.exp(-x[:, 0]**2/m20/2)
         gy = m00*self.camera.pixelsize/(2*np.pi*m02)**.5*np.exp(-y[0, :]**2/m02/2)
 
         self.data.set_data("gauss_x", gx)
         self.data.set_data("gauss_y", gy)
 
-        return
 
         ts = np.linspace(0, 2*np.pi, 50)
         t = self.t/180*np.pi
@@ -321,9 +338,12 @@ slider_editor=DefaultOverride(mode="slider")
 
 class Bullseye(HasTraits):
     plots = Instance(GridPlotContainer)
+    abplots = Instance(HPlotContainer)
     screen = Instance(Plot)
     horiz = Instance(Plot)
     vert = Instance(Plot)
+    asum = Instance(Plot)
+    bsum = Instance(Plot)
     camera = Instance(Camera)
     analysis = Instance(Analysis)
 
@@ -341,15 +361,11 @@ class Bullseye(HasTraits):
                 style="readonly"),
             VGroup(HGroup(
                 "object.camera.shutter",
-                Item("object.camera.auto_shutter", show_label=False)),
+                UItem("object.camera.auto_shutter")),
                 "object.camera.gain",
                 "object.camera.framerate",
                 "object.camera.average"),
-               HGroup(
-                      "object.camera.width",
-                      "object.camera.height",
-                      "object.camera.left",
-                      "object.camera.bottom", style="readonly"),
+               HGroup("object.camera.roi", style="readonly"),
             VGroup(HGroup(
                 Item("object.camera.active", label="Capture"),
                 Item("object.analysis.active", label="Process")),
@@ -357,8 +373,11 @@ class Bullseye(HasTraits):
                 "object.analysis.background",
                 "palette"),),
             ),
-        Item("plots", editor=ComponentEditor(),
-            show_label=False),
+        VGroup(
+            UItem("plots", editor=ComponentEditor()),
+            UItem("abplots", editor=ComponentEditor(),
+                height=-200, resizable=False),
+            ),
         ), resizable=True, title='Bullseye')
 
     def __init__(self, uri="first:", **k):
@@ -376,11 +395,9 @@ class Bullseye(HasTraits):
         self.analysis.camera = self.camera
         self.analysis.update()
 
-        self.plots = GridPlotContainer(shape=(2,2),
-                padding_left=0, padding_bottom=0,
-                padding_top=0, padding_right=0,
+        self.plots = GridPlotContainer(shape=(2,2), padding=0,
                 use_backbuffer=True, fill_padding=True,
-                spacing=(0,0), halign="left", valign="bottom",
+                spacing=(5,5), halign="left", valign="bottom",
                 bgcolor="black",
                 )
         self.screen = Plot(self.data, bgcolor="black",
@@ -402,7 +419,8 @@ class Bullseye(HasTraits):
         self.horiz.index_axis.visible = False
         self.horiz.value_axis.visible = False
         self.horiz.index_grid.visible = True
-        self.horiz.value_grid.visible = True
+        self.horiz.value_grid.visible = False
+        self.horiz.value_mapper.range.low_setting = 0
         self.vert = Plot(self.data,
                 orientation="v",
                 resizable="v", padding=0, width=100,
@@ -411,7 +429,8 @@ class Bullseye(HasTraits):
         self.vert.index_axis.visible = False
         self.vert.value_axis.visible = False
         self.vert.index_grid.visible = True
-        self.vert.value_grid.visible = True
+        self.vert.value_grid.visible = False
+        self.vert.value_mapper.range.low_setting = 0
 
         self.mini = VPlotContainer(
                 width=100, height=100, resizable="",
@@ -442,18 +461,48 @@ class Bullseye(HasTraits):
                 colormap=color_map_name_dict["gray"],
                 )[0]
         i.color_mapper.range.low_setting = 0
-        i.color_mapper.range.high_setting = 256
-        t = ImageInspectorTool(i)
-        i.tools.append(t)
-        o = ImageInspectorOverlay(component=i, image_inspector=t,
-            bgcolor="darkgray", border_visible=False, tooltip_mode=True,
-            font="modern 10")
-        i.overlays.append(o)
+        i.color_mapper.range.high_setting = 255
+        #t = ImageInspectorTool(i)
+        #i.tools.append(t)
+        #o = ImageInspectorOverlay(component=i, image_inspector=t,
+        #    bgcolor="darkgray", border_visible=False, tooltip_mode=True,
+        #    font="modern 10")
+        #i.overlays.append(o)
 
         self.horiz.plot(("x", "imx"), type="line", color="red")
-        self.horiz.plot(("x", "gauss_x"), type="line", color="blue")
+        #self.horiz.plot(("x", "gauss_x"), type="line", color="blue")
         self.vert.plot(("y", "imy"), type="line", color="red")
-        self.vert.plot(("y", "gauss_y"), type="line", color="blue")
+        #self.vert.plot(("y", "gauss_y"), type="line", color="blue")
+
+        self.abplots = HPlotContainer(padding=20,
+                use_backbuffer=True, fill_padding=True,
+                spacing=10, bgcolor="black")
+        self.asum = Plot(self.data,
+                padding=0,
+                bgcolor="black",
+                border_visible=False, border_color="white")
+        self.asum.index_axis.tick_color = "white"
+        self.asum.value_axis.visible = False
+        self.asum.index_axis.tick_label_color = "white"
+        self.asum.index_axis.axis_line_color = "white"
+        self.asum.value_mapper.range.low_setting = 0
+        self.asum.value_grid.visible = False
+        self.bsum = Plot(self.data,
+                padding=0,
+                bgcolor="black",
+                border_visible=False, border_color="white")
+        self.bsum.index_axis.tick_color = "white"
+        self.bsum.value_axis.visible = False
+        self.bsum.index_axis.tick_label_color = "white"
+        self.bsum.index_axis.axis_line_color = "white"
+        self.bsum.value_mapper.range.low_setting = 0
+        self.bsum.value_grid.visible = False
+
+        self.abplots.add(self.asum)
+        self.abplots.add(self.bsum)
+        self.bsum.value_range = self.asum.value_range
+        self.asum.plot(("a", "ima"), type="line", color="red")
+        self.bsum.plot(("b", "imb"), type="line", color="red")
 
         return
 
@@ -490,11 +539,20 @@ class Bullseye(HasTraits):
         m = color_map_name_dict[self.palette]
         p.color_mapper = m(p.value_range)
 
+    @on_trait_change("screen.index_range.updated")
+    @on_trait_change("screen.value_range.updated")
+    def set_range(self):
+        l, r = self.screen.index_range.low, self.screen.index_range.high
+        b, t = self.screen.value_range.low, self.screen.value_range.high
+        px = self.camera.pixelsize
+        l, r = map(lambda a: int(min(1280, max(0, a/px))), (l, r))
+        b, t = map(lambda a: int(min(960, max(0, a/px))), (b, t))
+        self.camera.roi = [l, b, max(8, r-l), max(2, t-b)]
 
 def main():
     logging.basicConfig(level=logging.WARNING)
-    #b = Bullseye("first:")
-    b = Bullseye("none:")
+    b = Bullseye("first:")
+    #b = Bullseye("none:")
     #b = Bullseye("guid:b09d01009981f9")
     b.configure_traits()
     b.close()

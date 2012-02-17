@@ -177,7 +177,7 @@ def affine(x, y):
     return Uncertain(off, off_err), Uncertain(slope, slope_err)
 
 def emva1288(cam, r=1e9):
-    cam.mode = cam.modes[3]
+    cam.mode = cam.modes_dict["1280x960_Y16"]
     cam.setup(active=False, trigger=None, exposure=None, gamma=None,
             framerate=None)
     cam.setup(gain=0., brightness=1., shutter=.13) # to fix shutter
@@ -188,7 +188,7 @@ def emva1288(cam, r=1e9):
             ]#np.logspace(np.log10(cam.shutter.range[0]),
             #    np.log10(min(2, cam.shutter.range[1])), 10)]
     ts.sort()
-    for res, typ in zip((dark, bright), ("dark", "bright")):
+    for res, typ in zip((bright, dark), ("bright", "dark")):
         raw_input("prepare '%s', then press enter" % typ)
         for t in ts:
             print "t=%g" % t
