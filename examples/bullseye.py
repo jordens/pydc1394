@@ -3,7 +3,7 @@
 # GPL-2
 
 from traits.trait_base import ETSConfig
-ETSConfig.toolkit = "wx"
+ETSConfig.toolkit = "qt4"
 from traitsui.api import toolkit
 # fix window color on unity
 if ETSConfig.toolkit == "wx":
@@ -56,9 +56,9 @@ class Camera(HasTraits):
     active = Bool(False)
 
     #roi = RoiTrait((0, 0, 1280, 960))
-    roi = ListFloat([0, 0, 1280, 960], minlen=4, maxlen=4)
+    roi = ListFloat([-1280/2, -960/2, 1280, 960], minlen=4, maxlen=4)
 
-    background = Bool(False)
+    background = Bool(True)
 
     x = Float
     y = Float
@@ -157,34 +157,39 @@ class Camera(HasTraits):
         self.cam.framerate.absolute = fr
 
     def update_roi(self):
-        x, y, w, h = self.roi
-        x = min(1280, max(0, x))
-        y = min(960, max(0, y))
-        w = min(1280-x, max(128, w))
-        h = min(960-y, max(128, h))
-        y = 960-h-y
-        (w, h), (x, y), _, _ = self.mode.setup(
-                (w, h), (x, y), "Y16")
-        y = 960-h-y
-        self.bounds = x, y, w, h
-        logging.debug("%s %s" % (self.bounds, self.mode.roi))
-
-    def get_dummy():
-        px = self.pixelsize
         l, b, w, h = self.roi
+        l = int(min(1280, max(0, l+1280/2)))
+        b = int(min(960, max(0, b+960/2)))
+        w = int(min(1280-l, max(128, w)))
+        h = int(min(960-b, max(128, h)))
+        t = 960-h-b
+        if self.cam is not None:
+            (w, h), (l, t), _, _ = self.mode.setup(
+                    (w, h), (l, t), "Y16")
+            logging.debug("new roi %s" % (self.mode.roi,))
+        b = 960-h-t
+        self.bounds = l, b, w, h
+        logging.debug("new bounds %s" % (self.bounds,))
+
+    def get_dummy(self):
+        px = self.pixelsize
+        l, b, w, h = self.bounds
         y, x = np.mgrid[b:b+h, l:l+w]
+        x -= 1280/2
+        y -= 960/2
         x *= px
         y *= px
-        x -= 1.1e3
-        y -= 1.2e3
-        t = 15./180.*np.pi
+        x -= 600
+        y -= 700
+        t = np.deg2rad(15)
         b = 150/4.
         a = 250/4.
-        h = 200
+        h = .8
         x, y = np.cos(t)*x+np.sin(t)*y, -np.sin(t)*x+np.cos(t)*y
-        im = h*np.exp(-x**2/a**2/2.-y**2/b**2/2.)
+        im = h*np.exp(((x/a)**2+(y/b)**2)/-2.)
         im *= 1+np.random.randn(*im.shape)*.2
         #im += np.random.randn(im.shape)*30
+        #logging.debug("im shape %s" % (im.shape,))
         return im
 
     def capture(self):
@@ -193,8 +198,7 @@ class Camera(HasTraits):
             im = np.array(im_).astype("float")/(1<<16)
             im_.enqueue()
             # undo gamma
-            logging.debug("%s %s %s %s" % (
-                im.shape, self.roi, self.cam.mode.roi, im.ptp()))
+            logging.debug("im shape, ptp %s %s" % (im.shape, im.ptp()))
         else:
             im = self.get_dummy()
         if self.average > 1 and self.im.shape == im.shape:
@@ -216,10 +220,10 @@ class Camera(HasTraits):
             im -= np.percentile(im, 5)
 
         y, x = np.ogrid[b:b+h, l:l+w]
-        xbounds = (np.r_[x[0, :], (l+w)]-.5)*px
-        ybounds = (np.r_[y[:, 0], (b+h)]-.5)*px
-        #xbounds = (x[0, 0]-.5)*px, (x[0, -1]+.5)*px
-        #ybounds = (y[0, 0]-.5)*px, (y[-1, 0]+.5)*px
+        x -= 1280/2.
+        y -= 960/2.
+        xbounds = (np.r_[x[0, :], x[0, -1]+1]-.5)
+        ybounds = (np.r_[y[:, 0], y[-1, 0]+1]-.5)
 
         m00 = im.sum() or 1.
         imn = im/m00
@@ -230,24 +234,24 @@ class Camera(HasTraits):
 
         g = np.sign(m20-m02)
         if g == 0:
-            a = 2*2**.5*(m20+m02+2*np.abs(m11))**.5
-            b = 2*2**.5*(m20+m02-2*np.abs(m11))**.5
-            t = np.pi/4*np.sign(m11)
+            wa = 2*2**.5*(m20+m02+2*np.abs(m11))**.5
+            wb = 2*2**.5*(m20+m02-2*np.abs(m11))**.5
+            wt = np.pi/4*np.sign(m11)
         else:
-            q = g*((m20-m02)**2+4*m11**2)**.5
-            a = 2*2**.5*((m20+m02)+q)**.5
-            b = 2*2**.5*((m20+m02)-q)**.5
-            t = .5*np.arctan2(2*m11, m20-m02)
-        e = a/b
-        ab = 2*2**.5*(m20+m02)**.5
+            wq = g*((m20-m02)**2+4*m11**2)**.5
+            wa = 2*2**.5*((m20+m02)+wq)**.5
+            wb = 2*2**.5*((m20+m02)-wq)**.5
+            wt = .5*np.arctan2(2*m11, m20-m02)
+        we = wa/wb
+        wab = 2*2**.5*(m20+m02)**.5
 
         self.x = m10*px
         self.y = m01*px
-        self.t = t/np.pi*180
-        self.a = a*px
-        self.b = b*px
-        self.d = ab*px
-        self.e = e
+        self.t = np.rad2deg(wt)
+        self.a = wa*px
+        self.b = wb*px
+        self.d = wab*px
+        self.e = we
 
         # http://www.ipol.im/pub/algo/g_linear_methods_for_image_interpolation
         # PIL.Image.rotate() appears to be not norm-conserving:
@@ -258,9 +262,20 @@ class Camera(HasTraits):
         # im2 = im.rotate(angle=10., resample=Image.BILINEAR, expand=True)
         # np.array(im).sum(), np.array(im2).sum()
         # (4950.0, 4999.5005)
-        imr = np.array(Image.fromarray(im).rotate(angle=np.rad2deg(t),
+        imr = np.array(Image.fromarray(im).rotate(
+            angle=np.rad2deg(wt),
             resample=Image.NEAREST, expand=True))
-        b, a = np.ogrid[:imr.shape[0], :imr.shape[1]]
+        xc, yc = m10+1280/2-l-w/2, m01+960/2-b-h/2
+        xcr = np.cos(wt)*xc+np.sin(wt)*yc+imr.shape[1]/2.
+        ycr = -np.sin(wt)*xc+np.cos(wt)*yc+imr.shape[0]/2.
+        rad = 3
+        imr = imr[int(max(0, ycr-rad*wb)):
+                  int(min(imr.shape[0], ycr+rad*wb)),
+                  int(max(0, xcr-rad*wa)):
+                  int(min(imr.shape[1], xcr+rad*wa))]
+        yb, xa = np.ogrid[:imr.shape[0], :imr.shape[1]]
+        xa -= min(0, rad*wa-xcr)+xcr
+        yb -= min(0, rad*wb-ycr)+ycr
 
         upd = dict((
             ("img", im),
@@ -268,17 +283,17 @@ class Camera(HasTraits):
             ("imy", im.sum(axis=1)),
             ("ima", imr.sum(axis=0)),
             ("imb", imr.sum(axis=1)),
-            ("a", a[0, :]*px),
-            ("b", b[:, 0]*px),
+            ("a", xa[0, :]*px),
+            ("b", yb[:, 0]*px),
             ("x", x[0, :]*px),
             ("y", y[:, 0]*px),
-            ("xbounds", xbounds),
-            ("ybounds", ybounds),
+            ("xbounds", xbounds*px),
+            ("ybounds", ybounds*px),
             ))
         self.data.arrays.update(upd)
         self.data.data_changed = {"changed": upd.keys()}
-        if self.grid:
-            self.grid.set_data(xbounds, ybounds)
+        if self.grid is not None:
+            self.grid.set_data(xbounds*px, ybounds*px)
             #enforce data/screen aspect ratio 1
             sl, sr, sb, st = self.gridm.screen_bounds
             dl, db = self.gridm.range.low
@@ -463,8 +478,8 @@ class Bullseye(HasTraits):
             always_on=False,
             x_max_zoom_factor=1e2,
             y_max_zoom_factor=1e2,
-            x_min_zoom_factor=1,
-            y_min_zoom_factor=1,
+            x_min_zoom_factor=0.5,
+            y_min_zoom_factor=0.5,
             zoom_factor=1.2))
         self.screen.tools.append(PanTool(self.screen))
         self.plots.tools.append(SaveTool(self.plots,
@@ -476,7 +491,6 @@ class Bullseye(HasTraits):
                     interpolation="nearest",
                     colormap=color_map_name_dict[self.palette],
                     )[0]
-            #self.screen.aspect_ratio = 1280/960.
             self.screenplot.color_mapper.range.low_setting = 0
             self.screenplot.color_mapper.range.high_setting = 1
             self.camera.grid = self.screenplot.index
@@ -514,8 +528,9 @@ class Bullseye(HasTraits):
         self.bsum.index_axis.tick_label_color = "white"
         self.bsum.index_axis.axis_line_color = "white"
         self.bsum.value_grid.visible = False
-        self.bsum.value_range = self.asum.value_range
-        self.bsum.index_range = self.asum.index_range
+        # lock scales
+        #self.bsum.value_range = self.asum.value_range
+        #self.bsum.index_range = self.asum.index_range
 
         self.abplots.add(self.asum)
         self.abplots.add(self.bsum)
@@ -556,9 +571,11 @@ class Bullseye(HasTraits):
         m = color_map_name_dict[self.palette]
         p.color_mapper = m(p.value_range)
 
-    @on_trait_change("screen.index_range.updated")
+    #@on_trait_change("screen.index_range.updated")
     @on_trait_change("screen.value_range.updated")
     def set_range(self):
+        #l, b = self.screenplot.range.low
+        #r, t = self.screenplot.range.high
         l, r = self.screen.index_range.low, self.screen.index_range.high
         b, t = self.screen.value_range.low, self.screen.value_range.high
         px = self.camera.pixelsize
