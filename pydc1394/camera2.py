@@ -939,7 +939,7 @@ class Format7(Mode):
         position = xu*int(image_position[0]/xu), yu*int(image_position[1]/yu)
         size = wu*int(image_size[0]/wu), hu*int(image_size[1]/hu)
         self.roi = size, position, color_coding, packet_size
-        return self.roi
+        return size, position, color_coding, packet_size
 
 
 _mode_map = {

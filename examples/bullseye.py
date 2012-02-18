@@ -2,23 +2,29 @@
 # (c) Robert Jordens <jordens@debian.org>
 # GPL-2
 
-from traits.api import (HasTraits, Range, Float, Enum,
-        on_trait_change, TraitError, ListInt,
-        Property, Instance, Button, Bool, Int, Button)
-from traitsui.api import (View, Item, UItem, HGroup, VGroup,
-        DefaultOverride)
-
+from traits.trait_base import ETSConfig
+ETSConfig.toolkit = "wx"
+from traitsui.api import toolkit
 # fix window color on unity
-from traitsui.wx import constants
-import wx
-constants.WindowColor = wx.NullColor
+if ETSConfig.toolkit == "wx":
+    from traitsui.wx import constants
+    import wx
+    constants.WindowColor = wx.NullColor
+
+
+from traits.api import (HasTraits, Range, Float, Enum,
+        on_trait_change, TraitError, TraitType, 
+        Instance, Bool, Int, Button)
+
+from traitsui.api import (View, Item, UItem,
+        HGroup, VGroup,
+        DefaultOverride)
 
 from chaco.api import (Plot, ArrayPlotData, color_map_name_dict,
         GridPlotContainer, VPlotContainer, HPlotContainer)
-from chaco.tools.api import (PanTool, ZoomTool, 
-        SaveTool)
-from chaco.tools.image_inspector_tool import (
-        ImageInspectorTool, ImageInspectorOverlay)
+from chaco.tools.pan_tool2 import PanTool
+from chaco.tools.api import (ZoomTool, SaveTool, ImageInspectorTool,
+        ImageInspectorOverlay)
 
 from enthought.enable.component_editor import ComponentEditor
 
@@ -34,16 +40,32 @@ from scipy import stats, optimize
 from threading import Thread
 
 
-    
-
+class RoiTrait(TraitType):
+    def validate(self, obj, name, value):
+        try:
+            ac = obj.active
+            obj.active = False
+            x, y, w, h = value
+            x = min(1280, max(0, x))
+            y = min(960, max(0, y))
+            w = min(1280-x, max(8, w))
+            h = min(960-y, max(2, h))
+            y = 960-h-y
+            (w, h), (x, y), _, _ = obj.cam.mode.setup(
+                    (w, h), (x, y), "Y8")
+            obj.active = ac
+            y = 960-h-y
+            return x, y, w, h
+        except Exception, e:
+            self.error(obj, name, value)
 
 class Camera(HasTraits):
     cam = Instance(DC1394Camera)
 
     shutter = Range(1e-5, 100e-3, 1e-3)
     gain = Range(0., 24., 0.)
-    average = Range(1, 10, 1)
     framerate = Range(1, 10, 2)
+    average = Range(1, 10, 1)
 
     auto_shutter = Button("Auto")
 
@@ -52,7 +74,17 @@ class Camera(HasTraits):
     thread = Instance(Thread)
     active = Bool(False)
 
-    roi = ListInt([0, 0, 1280, 960], minlen=4, maxlen=4)
+    roi = RoiTrait((0, 0, 1280, 960))
+    #roi = ListInt([0, 0, 1280, 960], minlen=4, maxlen=4)
+
+    background = Bool(False)
+
+    x = Float
+    y = Float
+    t = Float
+    e = Float
+    a = Float
+    b = Float
 
     def __init__(self, uri, **k):
         super(Camera, self).__init__(**k)
@@ -69,11 +101,13 @@ class Camera(HasTraits):
 
     def setup(self):
         self.mode = self.cam.modes_dict["FORMAT7_0"]
-        self._do_mode_setup()
         self.cam.mode = self.mode
-        self.cam.setup(gamma=.5, framerate=self.framerate,
+        self.roi = self.roi
+        self.bounds = None
+        self.cam.setup(framerate=self.framerate,
                 gain=self.gain, shutter=self.shutter)
-        self.cam.setup(active=False, exposure=None, brightness=None)
+        self.cam.setup(active=False,
+                exposure=None, brightness=None, gamma=None)
 
     def start(self):
         if not self.cam:
@@ -99,18 +133,6 @@ class Camera(HasTraits):
     def _do_gain(self, val):
         self.cam.gain.absolute = val
 
-    @on_trait_change("gain")
-    def _do_gain(self, val):
-        self.cam.gain.absolute = val
-
-    @on_trait_change("roi")
-    def _do_mode_setup(self):
-        l, b, w, h = self.roi
-        self.mode.setup(
-                image_size=(w, h),
-                image_position=(l, 960-h-b),
-                color_coding="Y8")
-
     @on_trait_change("auto_shutter")
     def _do_auto_shutter(self):
         ac = self.active
@@ -123,36 +145,36 @@ class Camera(HasTraits):
             im_ = self.cam.dequeue()
             im = np.array(im_).copy()
             im_.enqueue()
-            im = im.astype("float32")**2/256 # undo gamma
+            # undo gamma
             p = np.percentile(im, 99)
-            print "1%%>%g:" % p,
+            print "1%%>%g," % p,
             try:
-                if p > .75*256:
+                if p > .75*255:
                     self.shutter *= .8
-                    print "t-%g" % self.shutter
-                elif p < .25*256:
+                    print "t-: %g" % self.shutter
+                elif p < .25*255:
                     self.shutter /= .8
-                    print "t+%g" % self.shutter
+                    print "t+: %g" % self.shutter
                 else:
-                    print "t=%g" % self.shutter
+                    print "t=: %g" % self.shutter
                     break
-                # ensure all frames with old settings are gone
-                self.cam.flush()
-                self.cam.dequeue().enqueue()
             except TraitError:
                 break
+            # ensure all frames with old settings are gone
+            self.cam.flush()
+            self.cam.dequeue().enqueue()
         self.stop()
         # revert framerate and active state
         self.cam.framerate.absolute = fr
         self.active = ac
 
-    def update(self):
+    def capture(self):
         if self.cam:
             im_ = self.cam.dequeue()
-            im = np.array(im_).copy()
+            im = np.array(im_)/255.
             im_.enqueue()
-            im = np.nan_to_num(im.astype("float32")**2/256) # undo gamma
-            print im.shape, self.roi, self.cam.mode.roi
+            # undo gamma
+            print im.shape, self.roi, self.cam.mode.roi, im.ptp()
         else:
             px = self.pixelsize
             l, b, w, h = self.roi
@@ -173,81 +195,28 @@ class Camera(HasTraits):
             self.im = self.im*(1-1./self.average) + im/self.average
         else:
             self.im = im
-        self.data.set_data("img", self.im)
 
-    @on_trait_change("active")
-    def _start_me(self, value):
-        if value:
-            print "starting capture"
-            if self.thread is not None:
-                print "already have a thread, try again"
-                return
-            else:
-                self.thread = Thread(target=self.run)
-                self.thread.start()
-        else:
-            if self.thread is not None:
-                self.thread.join()
-                self.thread = None
+    def process(self):
+        im = self.im
+        if self.roi != self.bounds:
+            self.update_bounds()
 
-    def run(self):
-        print "start capture"
-        self.start()
-        while self.active:
-            print "capture"
-            self.update()
-        print "stop capture"
-        self.stop()
-
-
-class Analysis(HasTraits):
-    background = Bool(False)
-
-    x = Float
-    y = Float
-    t = Float
-    e = Float
-    a = Float
-    b = Float
-
-    thread = Instance(Thread)
-    active = Bool(False)
-
-    @on_trait_change("active")
-    def _start_me(self, value):
-        if value:
-            print "starting analysis"
-            if self.thread:
-                print "already have a thread, try again"
-                return
-            else:
-                self.thread = Thread(target=self.run)
-                self.thread.start()
-
-    def update(self):
-        im = self.data.get_data("img").copy()
-        px = self.camera.pixelsize
-        l, b, w, h = self.camera.roi
-
+        px = self.pixelsize
         if self.background:
             #imr = im.ravel()
             #low = stats.scoreatpercentile(imr, 20)
             #bg = imr[np.where(imr <= low)]
             #bg_mean = bg.mean()
             #im -= bg_mean
-            im -= np.percentile(im, 10)
+            im -= np.percentile(im, 5)
 
-        y, x = np.ogrid[b:b+h, l:l+w]
-
-        self.data.set_data("x", x[0, :]*px)
-        self.data.set_data("y", y[:, 0]*px)
-        self.data.set_data("xbounds", (np.r_[x[0, :], (l+w)]-.5)*px)
-        self.data.set_data("ybounds", (np.r_[y[:, 0], (b+h)]-.5)*px)
+        self.data.set_data("img", im)
         self.data.set_data("imx", im.sum(axis=0))
         self.data.set_data("imy", im.sum(axis=1))
 
+        x, y = self.pxx, self.pxy
         m00 = im.sum() or 1.
-        im /= m00
+        im = im/m00
         m10, m01 = (im*x).sum(), (im*y).sum()
         x -= m10
         y -= m01
@@ -274,6 +243,7 @@ class Analysis(HasTraits):
         self.b = b*px
         self.e = e
 
+        # http://www.ipol.im/pub/algo/g_linear_methods_for_image_interpolation
         # PIL.Image.rotate() appears to be not norm-conserving:
         # import numpy as np
         # from PIL import Image
@@ -324,12 +294,43 @@ class Analysis(HasTraits):
         self.data.set_data("ym_mark", 2*[min(ell2_y)])
         self.data.set_data("y_bar", [0, max(self.data.get_data("imy"))])
 
+    def update_bounds(self):
+        px = self.pixelsize
+        l, b, w, h = self.roi
+        self.pxy, self.pxx = np.ogrid[b:b+h, l:l+w]
+        self.data.set_data("x", self.pxx[0, :]*px)
+        self.data.set_data("y", self.pxy[:, 0]*px)
+        xbounds = (np.r_[self.pxx[0, :], (l+w)]-.5)*px
+        ybounds = (np.r_[self.pxy[:, 0], (b+h)]-.5)*px
+        self.data.set_data("xbounds", xbounds)
+        self.data.set_data("ybounds", ybounds)
+        self.bounds = l, b, w, h
+
+    @on_trait_change("active")
+    def _start_me(self, value):
+        if value:
+            print "starting capture"
+            if self.thread is not None:
+                print "already have a capture thread, try again"
+                return
+            else:
+                self.thread = Thread(target=self.run)
+                self.thread.start()
+        else:
+            if self.thread is not None:
+                self.thread.join()
+                assert self.thread is None
+
     def run(self):
-        print "start analysis"
+        print "start"
+        self.start()
         while self.active:
-            print "analysis"
-            self.update()
-        print "stop analysis"
+            self.capture()
+            print "captured"
+            self.process()
+            print "processed"
+        print "stop"
+        self.stop()
         self.thread = None
 
 
@@ -345,19 +346,18 @@ class Bullseye(HasTraits):
     asum = Instance(Plot)
     bsum = Instance(Plot)
     camera = Instance(Camera)
-    analysis = Instance(Analysis)
 
     palette = Enum("gray", "jet", "cool", "hot", "prism", "hsv")
 
     traits_view = View(HGroup(
         VGroup(
             VGroup(
-                Item("object.analysis.x", label="Centroid X", format_str="%g"),
-                Item("object.analysis.y", label="Centroid Y", format_str="%g"),
-                Item("object.analysis.t", label="Angle", format_str="%g"),
-                Item("object.analysis.a", label="Major axis (4w)", format_str="%g"),
-                Item("object.analysis.b", label="Minor axis (4w)", format_str="%g"),
-                Item("object.analysis.e", label="Ellipticity", format_str="%g"),
+                Item("object.camera.x", label="Centroid X", format_str="%g"),
+                Item("object.camera.y", label="Centroid Y", format_str="%g"),
+                Item("object.camera.t", label="Angle", format_str="%g"),
+                Item("object.camera.a", label="Major axis (4w)", format_str="%g"),
+                Item("object.camera.b", label="Minor axis (4w)", format_str="%g"),
+                Item("object.camera.e", label="Ellipticity", format_str="%g"),
                 style="readonly"),
             VGroup(HGroup(
                 "object.camera.shutter",
@@ -365,13 +365,10 @@ class Bullseye(HasTraits):
                 "object.camera.gain",
                 "object.camera.framerate",
                 "object.camera.average"),
-               HGroup("object.camera.roi", style="readonly"),
-            VGroup(HGroup(
-                Item("object.camera.active", label="Capture"),
-                Item("object.analysis.active", label="Process")),
-                   HGroup(
-                "object.analysis.background",
-                "palette"),),
+            HGroup(
+                "object.camera.active",
+                "object.camera.background",
+                "palette"),
             ),
         VGroup(
             UItem("plots", editor=ComponentEditor()),
@@ -387,13 +384,9 @@ class Bullseye(HasTraits):
         self.camera = Camera(uri)
         self.camera.data = self.data
         self.camera.start()
-        self.camera.update()
+        self.camera.capture()
+        self.camera.process()
         self.camera.stop()
-
-        self.analysis = Analysis()
-        self.analysis.data = self.data
-        self.analysis.camera = self.camera
-        self.analysis.update()
 
         self.plots = GridPlotContainer(shape=(2,2), padding=0,
                 use_backbuffer=True, fill_padding=True,
@@ -410,6 +403,8 @@ class Bullseye(HasTraits):
         self.screen.value_axis.tick_label_color = "white"
         self.screen.index_axis.axis_line_color = "white"
         self.screen.value_axis.axis_line_color = "white"
+        self.screen.index_grid.visible = False
+        self.screen.value_grid.visible = False
 
         self.horiz = Plot(self.data,
                 orientation="h",
@@ -439,6 +434,8 @@ class Bullseye(HasTraits):
         self.plots.component_grid = [
                 [self.vert, self.screen],
                 [self.mini, self.horiz]]
+        #self.screen.index_range = self.horiz.index_range
+        #self.screen.value_range = self.vert.index_range
         self.horiz.index_range = self.screen.index_range
         self.vert.index_range = self.screen.value_range
 
@@ -453,21 +450,21 @@ class Bullseye(HasTraits):
             zoom_factor=1.2))
         self.screen.tools.append(PanTool(self.screen))
         self.plots.tools.append(SaveTool(self.plots,
-            filename="bullseye.png"))
+            filename="bullseye.pdf"))
 
         i = self.screen.img_plot("img", name="img",
                 xbounds="xbounds", ybounds="ybounds",
                 interpolation="nearest",
-                colormap=color_map_name_dict["gray"],
+                colormap=color_map_name_dict[self.palette],
                 )[0]
         i.color_mapper.range.low_setting = 0
         i.color_mapper.range.high_setting = 255
-        #t = ImageInspectorTool(i)
-        #i.tools.append(t)
-        #o = ImageInspectorOverlay(component=i, image_inspector=t,
-        #    bgcolor="darkgray", border_visible=False, tooltip_mode=True,
-        #    font="modern 10")
-        #i.overlays.append(o)
+        t = ImageInspectorTool(i)
+        self.screen.tools.append(t)
+        i.overlays.append(ImageInspectorOverlay(
+            component=i, image_inspector=t,
+            border_size=0, bgcolor="darkgray", align="ur",
+            tooltip_mode=False, font="modern 10"))
 
         self.horiz.plot(("x", "imx"), type="line", color="red")
         #self.horiz.plot(("x", "gauss_x"), type="line", color="blue")
@@ -531,7 +528,6 @@ class Bullseye(HasTraits):
 
     def close(self):
         self.camera.active = False
-        self.analysis.active = False
 
     @on_trait_change("palette")
     def set_colormap(self):
@@ -545,9 +541,7 @@ class Bullseye(HasTraits):
         l, r = self.screen.index_range.low, self.screen.index_range.high
         b, t = self.screen.value_range.low, self.screen.value_range.high
         px = self.camera.pixelsize
-        l, r = map(lambda a: int(min(1280, max(0, a/px))), (l, r))
-        b, t = map(lambda a: int(min(960, max(0, a/px))), (b, t))
-        self.camera.roi = [l, b, max(8, r-l), max(2, t-b)]
+        self.camera.roi = l/px, b/px, (r-l)/px, (t-b)/px
 
 def main():
     logging.basicConfig(level=logging.WARNING)
