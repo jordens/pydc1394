@@ -13,29 +13,27 @@ if ETSConfig.toolkit == "wx":
     import wx
     constants.WindowColor = wx.NullColor
 
-from traits.api import (HasTraits, Range, Float, Enum,
-        on_trait_change, TraitError, Event, ListFloat,
-        Instance, Bool, Int, Button, Unicode)
+from traits.api import (HasTraits, Range, Int, Float, Enum, Bool,
+        Button, Event, Unicode, Str, ListFloat, Instance, Delegate,
+        on_trait_change, TraitError)
 
 from traitsui.api import (View, Item, UItem,
         HGroup, VGroup, DefaultOverride)
 
 from chaco.api import (Plot, ArrayPlotData, color_map_name_dict,
-        GridPlotContainer, VPlotContainer, HPlotContainer, PlotLabel)
+        GridPlotContainer, VPlotContainer, PlotLabel)
 from chaco.tools.api import (ZoomTool, SaveTool, ImageInspectorTool,
         ImageInspectorOverlay, PanTool)
 
 from enthought.enable.component_editor import ComponentEditor
 
-from enthought.pyface.timer.api import Timer
-
 from pydc1394.camera2 import Camera as DC1394Camera
 
 from angle_sum import angle_sum
 
-import urlparse, logging
+import urlparse, logging, time
 import numpy as np
-from scipy import stats, optimize
+# from scipy import stats
 from threading import Thread
 
 
@@ -73,6 +71,7 @@ class Camera(HasTraits):
     peak = Float
 
     text = Unicode
+    save_format = Str
 
     def __init__(self, uri, **k):
         super(Camera, self).__init__(**k)
@@ -213,6 +212,10 @@ class Camera(HasTraits):
             im_ = self.cam.dequeue()
             im = np.array(im_).copy()
             im_.enqueue()
+            if self.save_format:
+                name = time.strftime(self.save_format)
+                np.savez_compressed(name, im)
+                logging.debug("saved as %s" % name)
             im = im.astype("float")/float(1<<16)
             # undo gamma
             #logging.debug("im shape, ptp %s %s" % (im.shape, im.ptp()))
@@ -418,7 +421,6 @@ slider_editor=DefaultOverride(mode="slider")
 class Bullseye(HasTraits):
     plots = Instance(GridPlotContainer)
     abplots = Instance(VPlotContainer)
-    all_plots = Instance(VPlotContainer)
     screen = Instance(Plot)
     horiz = Instance(Plot)
     vert = Instance(Plot)
@@ -428,6 +430,8 @@ class Bullseye(HasTraits):
 
     palette = Enum("gray", "jet", "cool", "hot", "prism", "hsv")
     invert = Bool(True)
+
+    save_format = Delegate("camera", prefix="save_format", modify=True)
 
     traits_view = View(HGroup(VGroup(
         HGroup(
@@ -440,8 +444,8 @@ class Bullseye(HasTraits):
                 Item("object.camera.t", label="Rotation",
                     format_str=u"%.4g°"),
                 Item("object.camera.black", label="Black",
-                    format_str=u"%.4g")),
-            VGroup(
+                    format_str=u"%.4g"),
+            ), VGroup(
                 Item("object.camera.y", label="Centroid Y",
                     format_str=u"%.4g µm"),
                 Item("object.camera.b", label="Minor width",
@@ -453,29 +457,24 @@ class Bullseye(HasTraits):
                     format_str=u"%.4g"),
                 Item("object.camera.peak", label="Peak",
                     format_str=u"%.4g")),
-            style="readonly"),
-            VGroup(
-                "object.camera.shutter",
-                "object.camera.gain",
-                "object.camera.framerate",
-                "object.camera.average",
-                "object.camera.background",
-                ),
-            HGroup(
-                "object.camera.active",
-                UItem("object.camera.auto_shutter"),
-                UItem("palette"),
-                "invert"),
-            UItem("abplots", editor=ComponentEditor(),
-                width=-200, height=-300, resizable=False),
-            ),
-        #UItem("all_plots", editor=ComponentEditor(),
-        #    width=600, height=700),
-        #VGroup(
-            UItem("plots", editor=ComponentEditor(),
-                width=800),#width=600, height=600),
-        #    ),
-        ), resizable=True, title="Bullseye", width=1000)
+            style="readonly",
+        ), VGroup(
+            "object.camera.shutter",
+            "object.camera.gain",
+            "object.camera.framerate",
+            "object.camera.average",
+            "object.camera.background",
+        ), HGroup(
+            "object.camera.active",
+            UItem("object.camera.auto_shutter"),
+            UItem("palette"),
+            "invert"
+        ), UItem("abplots", editor=ComponentEditor(),
+                width=-200, height=-300, resizable=False
+        ),
+    ), UItem("plots", editor=ComponentEditor(),
+            width=800),#width=600, height=600),
+    ), resizable=True, title=u"Bullseye ― Beam Profiler", width=1000)
 
     def __init__(self, uri="first:", **k):
         super(Bullseye, self).__init__(**k)
@@ -487,69 +486,81 @@ class Bullseye(HasTraits):
         self.camera.data = self.data
         self.camera.initialize()
 
-        self.screen = Plot(self.data, bgcolor="lightgray",
-                border_visible=False,
-                padding=0, resizable="hv",
-                )
+        self.setup_plots()
+        self.populate_plots()
+
+    def setup_plots(self):
+        self.screen = Plot(self.data,
+                resizable="hv", padding=0, bgcolor="lightgray",
+                border_visible=False)
         self.screen.index_grid.visible = False
         self.screen.value_grid.visible = False
 
         self.horiz = Plot(self.data,
-                orientation="h", resizable="h", padding=0, height=100,
-                bgcolor="lightgray", title="", border_visible=False)
-        self.horiz.title_font = "modern 10"
-        self.horiz.title_position = "left"
-        self.horiz.title_angle = 90
-        self.horiz.index_axis.visible = False
-        self.horiz.value_axis.visible = False
-        self.horiz.index_grid.visible = True
-        self.horiz.value_grid.visible = False
+                resizable="h", padding=0, height=100,
+                bgcolor="lightgray", border_visible=False)
         self.horiz.value_mapper.range.low_setting = -.1
         self.horiz.index_range = self.screen.index_range
-        self.vert = Plot(self.data,
-                orientation="v", resizable="v", padding=0, width=100,
-                bgcolor="lightgray", title="", border_visible=False)
-        self.vert.index_axis.visible = False
-        self.vert.value_axis.visible = False
-        self.vert.index_grid.visible = True
-        self.vert.value_grid.visible = False
+        self.vert = Plot(self.data, orientation="v",
+                resizable="v", padding=0, width=100,
+                bgcolor="lightgray", border_visible=False)
+        for p in self.horiz, self.vert:
+            p.index_axis.visible = False
+            p.value_axis.visible = False
+            p.index_grid.visible = True
+            p.value_grid.visible = False
         self.vert.value_mapper.range.low_setting = -.1
-        self.vert.title_font = "modern 10"
-        self.vert.title_position = "bottom"
-
-        #self.vert.value_range = self.horiz.value_range
         self.vert.index_range = self.screen.value_range
 
+        #self.vert.value_range = self.horiz.value_range
+
         self.mini = Plot(self.data,
-                width=100, height=100, resizable="",
-                padding=0, bgcolor="lightgray",
-                border_visible=False)
+                width=100, height=100, resizable="", padding=0,
+                bgcolor="lightgray", border_visible=False)
         self.mini.index_axis.visible = False
         self.mini.value_axis.visible = False
         self.label = PlotLabel(component=self.mini,
-                overlay_position="inside left",
-                font="modern 10",
+                overlay_position="inside left", font="modern 10",
                 text=self.camera.text)
         self.mini.overlays.append(self.label)
 
         self.plots = GridPlotContainer(shape=(2,2), padding=0,
-                use_backbuffer=True,
-                spacing=(5,5), halign="left", valign="bottom",
-                bgcolor="lightgray",
-                component_grid = [
-                    [self.vert, self.screen],
-                    [self.mini, self.horiz]])
+                spacing=(5,5), use_backbuffer=True,
+                bgcolor="lightgray")
+        self.plots.component_grid = [[self.vert, self.screen],
+                                     [self.mini, self.horiz ]]
 
         self.screen.overlays.append(ZoomTool(self.screen,
-            tool_mode="box", alpha=.3,
-            always_on_modifier="shift",
-            always_on=False,
             x_max_zoom_factor=1e2, y_max_zoom_factor=1e2,
             x_min_zoom_factor=0.5, y_min_zoom_factor=0.5,
             zoom_factor=1.2))
         self.screen.tools.append(PanTool(self.screen))
+        self.plots.tools.append(SaveTool(self.plots,
+            filename="bullseye.pdf"))
 
-        self.screenplot = self.screen.img_plot("img", name="img",
+        self.asum = Plot(self.data,
+                padding=0, height=150, bgcolor="lightgray",
+                title="major axis", border_visible=False)
+        self.bsum = Plot(self.data,
+                padding=0, height=150, bgcolor="lightgray",
+                title="minor axis", border_visible=False)
+        for p in self.asum, self.bsum:
+            p.value_axis.visible = False
+            p.value_grid.visible = False
+            p.title_font = "modern 10"
+            p.title_position = "left"
+            p.title_angle = 90
+        # lock scales
+        #self.bsum.value_range = self.asum.value_range
+        #self.bsum.index_range = self.asum.index_range
+
+        self.abplots = VPlotContainer(padding=20, spacing=10,
+                use_backbuffer=True,bgcolor="lightgray",
+                fill_padding=True)
+        self.abplots.add(self.bsum, self.asum)
+
+    def populate_plots(self):
+        self.screenplot = self.screen.img_plot("img",
                 xbounds="xbounds", ybounds="ybounds",
                 interpolation="nearest",
                 colormap=color_map_name_dict[self.palette],
@@ -563,44 +574,6 @@ class Bullseye(HasTraits):
             component=self.screenplot, image_inspector=t,
             border_size=0, bgcolor="transparent", align="ur",
             tooltip_mode=False, font="modern 10"))
-
-        self.asum = Plot(self.data,
-                padding=0, height=150,
-                bgcolor="lightgray", title="major axis",
-                border_visible=False)
-        self.asum.value_axis.visible = False
-        self.asum.value_grid.visible = False
-        self.asum.title_font = "modern 10"
-        self.asum.title_position = "left"
-        self.asum.title_angle = 90
-
-        self.bsum = Plot(self.data,
-                padding=0, height=150,
-                bgcolor="lightgray",
-                title="minor axis",
-                border_visible=False)
-        self.bsum.value_axis.visible = False
-        self.bsum.value_grid.visible = False
-        self.bsum.title_font = "modern 10"
-        self.bsum.title_position = "left"
-        self.bsum.title_angle = 90
-        # lock scales
-        #self.bsum.value_range = self.asum.value_range
-        #self.bsum.index_range = self.asum.index_range
-
-        self.abplots = VPlotContainer(padding=20,
-                use_backbuffer=True,
-                spacing=10, bgcolor="lightgray", fill_padding=True)
-        self.abplots.add(self.bsum)
-        self.abplots.add(self.asum)
-
-        #self.all_plots = VPlotContainer(padding=0,
-        #        use_backbuffer=True,
-        #       spacing=0, bgcolor="lightgray")
-        #self.all_plots.add(self.abplots)
-        #self.all_plots.add(self.plots)
-        self.plots.tools.append(SaveTool(self.plots,
-            filename="bullseye.pdf"))
 
         self.horiz.plot(("x", "imx"), type="line", color="red")
         self.vert.plot(("y", "imy"), type="line", color="red")
@@ -642,7 +615,7 @@ class Bullseye(HasTraits):
         p.color_mapper.range.low_setting = a
         p.color_mapper.range.high_setting = b
 
-    #@on_trait_change("screen.index_range.updated")
+    # value_range seems to be updated after index_range, take this
     @on_trait_change("screen.value_range.updated")
     def set_range(self):
         l, r = self.screen.index_range.low, self.screen.index_range.high
@@ -668,11 +641,25 @@ class Bullseye(HasTraits):
 
 
 def main():
-    logging.basicConfig(level=logging.DEBUG,
-        format='%(asctime)s %(levelname)s %(message)s')
-    b = Bullseye("first:")
-    #b = Bullseye("none:")
-    #b = Bullseye("guid:b09d01009981f9")
+    import optparse
+    p = optparse.OptionParser(usage="%prog [options]")
+    p.add_option("-c", "--camera", default="first:",
+            help="camera uri (none:, first:, guid:b09d01009981f9) "
+                 "[%default]")
+    p.add_option("-s", "--save", default="",
+            help="save images accordint to strftime() "
+                "format string, compressed npz format [%default]")
+    p.add_option("-l", "--log",
+            help="log output file [stderr]")
+    p.add_option("-d", "--debug", default="info",
+            help="log level (debug, info, warn, error, "
+                "critical, fatal) [%default]")
+    o, a = p.parse_args()
+    logging.basicConfig(filename=o.log,
+            level=getattr(logging, o.debug.upper()),
+            format='%(asctime)s %(levelname)s %(message)s')
+    b = Bullseye(o.camera)
+    b.save_format = o.save
     b.configure_traits()
     b.close()
 
