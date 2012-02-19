@@ -175,6 +175,27 @@ class Camera(HasTraits):
         self.bounds = l, b, w, h
         logging.debug("new bounds %s" % (self.bounds,))
 
+        px = self.pixelsize
+        x = np.arange(l-1280/2, l+w-1280/2)*px
+        y = np.arange(b-960/2, b+h-960/2)*px
+        xbounds = (np.r_[x, x[-1]+px]-.5*px)
+        ybounds = (np.r_[y, y[-1]+px]-.5*px)
+        upd = dict((("x", x), ("y", y),
+            ("xbounds", xbounds), ("ybounds", ybounds)))
+        self.data.arrays.update(upd)
+        self.data.data_changed = {"changed": upd.keys()}
+        if self.grid is not None:
+            self.grid.set_data(xbounds, ybounds)
+            #enforce data/screen aspect ratio 1
+            sl, sr, sb, st = self.gridm.screen_bounds
+            dl, db = self.gridm.range.low
+            dr, dt = self.gridm.range.high
+            dsdx = float(sr-sl)/(dr-dl)
+            dt_new = db+(st-sb)/dsdx
+            #dsdy = float(st-sb)/(dt-db)
+            #print dsdx, dsdy, dt, dt_new
+            self.gridm.range.y_range.high_setting = dt_new
+
     def get_dummy(self):
         px = self.pixelsize
         l, b, w, h = self.bounds
@@ -247,6 +268,9 @@ class Camera(HasTraits):
         m00, m10, m01, m20, m02, m11, wa, wb, wt, we, wab = \
                 self.gauss_process(im, background=self.background)
 
+        self.m00 = m00
+        self.m20 = m20
+        self.m02 = m02
         self.x = (m10+l-1280/2)*px
         self.y = (m01+b-960/2)*px
         self.t = np.rad2deg(wt)
@@ -275,91 +299,70 @@ class Camera(HasTraits):
                   int(min(imr.shape[0], ycr+rad*wb)),
                   int(max(0, xcr-rad*wa)):
                   int(min(imr.shape[1], xcr+rad*wa))]
-        yb, xa = np.ogrid[:imr.shape[0], :imr.shape[1]]
-        xa -= min(0, rad*wa-xcr)+xcr
-        yb -= min(0, rad*wb-ycr)+ycr
-
-        y, x = np.ogrid[b:b+h, l:l+w]
-        x -= 1280/2.
-        y -= 960/2.
-        xbounds = (np.r_[x[0, :], x[0, -1]+1]-.5)
-        ybounds = (np.r_[y[:, 0], y[-1, 0]+1]-.5)
+        xa = np.arange(imr.shape[1]) - (min(0, rad*wa-xcr)+xcr)
+        yb = np.arange(imr.shape[0]) - (min(0, rad*wb-ycr)+ycr)
 
         upd = dict((
             ("imx", im.sum(axis=0)),
             ("imy", im.sum(axis=1)),
             ("ima", imr.sum(axis=0)),
             ("imb", imr.sum(axis=1)),
-            ("a", xa[0, :]*px),
-            ("b", yb[:, 0]*px),
-            ("x", x[0, :]*px),
-            ("y", y[:, 0]*px),
-            ("xbounds", xbounds*px),
-            ("ybounds", ybounds*px),
+            ("a", xa*px),
+            ("b", yb*px),
             ))
         if self.update_image:
             upd["img"] = im
         self.data.arrays.update(upd)
         self.data.data_changed = {"changed": upd.keys()}
-        if self.grid is not None:
-            self.grid.set_data(xbounds*px, ybounds*px)
-            #enforce data/screen aspect ratio 1
-            sl, sr, sb, st = self.gridm.screen_bounds
-            dl, db = self.gridm.range.low
-            dr, dt = self.gridm.range.high
-            dsdx = float(sr-sl)/(dr-dl)
-            dt_new = db+(st-sb)/dsdx
-            #dsdy = float(st-sb)/(dt-db)
-            #print dsdx, dsdy, dt, dt_new
-            self.gridm.range.y_range.high_setting = dt_new
 
-        grx = m00/(np.pi**.5*wa/2/2**.5)*np.exp(-(2**.5*2*xa[0, :]/wa)**2)
-        gry = m00/(np.pi**.5*wb/2/2**.5)*np.exp(-(2**.5*2*yb[:, 0]/wb)**2)
-        gx = m00/(2*np.pi*m20)**.5*np.exp(-(x[0, :]-self.x/px)**2/m20/2)
-        gy = m00/(2*np.pi*m02)**.5*np.exp(-(y[:, 0]-self.y/px)**2/m02/2)
+        x = np.arange(l, l+w)-1280/2
+        y = np.arange(b, b+h)-960/2
+
+        grx = m00/(np.pi**.5*wa/2/2**.5)*np.exp(-(2**.5*2*xa/wa)**2)
+        gry = m00/(np.pi**.5*wb/2/2**.5)*np.exp(-(2**.5*2*yb/wb)**2)
+        gx = m00/(2*np.pi*m20)**.5*np.exp(-(x-self.x/px)**2/m20/2)
+        gy = m00/(2*np.pi*m02)**.5*np.exp(-(y-self.y/px)**2/m02/2)
         self.data.set_data("gx", gx)
         self.data.set_data("gy", gy)
         self.data.set_data("grx", grx)
         self.data.set_data("gry", gry)
 
+        self.update_markers()
+
+    def update_markers(self):
+        px = self.pixelsize
         ts = np.linspace(0, 2*np.pi, 50)
+        ex, ey = self.a*np.cos(ts), self.b*np.sin(ts)
         t = np.deg2rad(self.t)
-        ell1_x = self.x+.5*(
-                self.a*np.cos(ts)*np.cos(t)-self.b*np.sin(ts)*np.sin(t))
-        ell1_y = self.y+.5*(
-                self.b*np.sin(ts)*np.cos(t)+self.a*np.cos(ts)*np.sin(t))
-        ell3_x = self.x+3*.5*(
-                self.a*np.cos(ts)*np.cos(t)-self.b*np.sin(ts)*np.sin(t))
-        ell3_y = self.y+3*.5*(
-                self.b*np.sin(ts)*np.cos(t)+self.a*np.cos(ts)*np.sin(t))
-        self.data.set_data("ell1_x", ell1_x)
-        self.data.set_data("ell1_y", ell1_y)
-        self.data.set_data("ell3_x", ell3_x)
-        self.data.set_data("ell3_y", ell3_y)
-        ai = np.linspace(-3*self.a/2, 3*self.a/2, 2)
-        bi = np.linspace(-3*self.b/2, 3*self.b/2, 2)
-        self.data.set_data("a_x", ai*np.cos(t)+self.x)
-        self.data.set_data("a_y", ai*np.sin(t)+self.y)
-        self.data.set_data("b_x", -bi*np.sin(t)+self.x)
-        self.data.set_data("b_y", bi*np.cos(t)+self.y)
+        ex = ex*np.cos(t)-ey*np.sin(t)
+        ey = ex*np.sin(t)+ey*np.cos(t)
+        self.data.set_data("ell1_x", self.x+.5*ex)
+        self.data.set_data("ell1_y", self.y+.5*ey)
+        self.data.set_data("ell3_x", self.x+3/2.*ex)
+        self.data.set_data("ell3_y", self.y+3/2.*ey)
+        k = np.array([-3/2., 3/2])
+        self.data.set_data("a_x", self.a*k*np.cos(t)+self.x)
+        self.data.set_data("a_y", self.a*k*np.sin(t)+self.y)
+        self.data.set_data("b_x", -self.b*k*np.sin(t)+self.x)
+        self.data.set_data("b_y", self.b*k*np.cos(t)+self.y)
 
         self.data.set_data("x0_mark", 2*[self.x])
-        self.data.set_data("xp_mark", 2*[self.x+2*px*m20**.5])
-        self.data.set_data("xm_mark", 2*[self.x-2*px*m20**.5])
-        self.data.set_data("x_bar", [0, m00/(2*np.pi*m20)**.5])
+        self.data.set_data("xp_mark", 2*[self.x+2*px*self.m20**.5])
+        self.data.set_data("xm_mark", 2*[self.x-2*px*self.m20**.5])
+        self.data.set_data("x_bar", [0, self.m00/(2*np.pi*self.m20)**.5])
         self.data.set_data("y0_mark", 2*[self.y])
-        self.data.set_data("yp_mark", 2*[self.y+2*px*m02**.5])
-        self.data.set_data("ym_mark", 2*[self.y-2*px*m02**.5])
-        self.data.set_data("y_bar", [0, m00/(2*np.pi*m02)**.5])
+        self.data.set_data("yp_mark", 2*[self.y+2*px*self.m02**.5])
+        self.data.set_data("ym_mark", 2*[self.y-2*px*self.m02**.5])
+        self.data.set_data("y_bar", [0, self.m00/(2*np.pi*self.m02)**.5])
 
         self.data.set_data("a0_mark", 2*[0])
         self.data.set_data("ap_mark", 2*[self.a/2])
         self.data.set_data("am_mark", 2*[-self.a/2])
-        self.data.set_data("a_bar", [0, m00/(np.pi**.5*wa/2/2**.5)])
+        self.data.set_data("a_bar", [0, self.m00/(np.pi**.5*self.a/px/2/2**.5)])
         self.data.set_data("b0_mark", 2*[0])
         self.data.set_data("bp_mark", 2*[self.b/2])
         self.data.set_data("bm_mark", 2*[-self.b/2])
-        self.data.set_data("b_bar", [0, m00/(np.pi**.5*wb/2/2**.5)])
+        self.data.set_data("b_bar", [0, self.m00/(np.pi**.5*self.b/px/2/2**.5)])
 
 
     @on_trait_change("active")
