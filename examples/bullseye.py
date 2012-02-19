@@ -15,17 +15,15 @@ if ETSConfig.toolkit == "wx":
 
 from traits.api import (HasTraits, Range, Float, Enum,
         on_trait_change, TraitError, Event, ListFloat,
-        Instance, Bool, Int, Button)
+        Instance, Bool, Int, Button, Unicode)
 
 from traitsui.api import (View, Item, UItem,
-        HGroup, VGroup,
-        DefaultOverride)
+        HGroup, VGroup, DefaultOverride)
 
 from chaco.api import (Plot, ArrayPlotData, color_map_name_dict,
-        GridPlotContainer, VPlotContainer, HPlotContainer)
-from chaco.tools.pan_tool2 import PanTool
+        GridPlotContainer, VPlotContainer, HPlotContainer, PlotLabel)
 from chaco.tools.api import (ZoomTool, SaveTool, ImageInspectorTool,
-        ImageInspectorOverlay)
+        ImageInspectorOverlay, PanTool)
 
 from enthought.enable.component_editor import ComponentEditor
 
@@ -73,6 +71,8 @@ class Camera(HasTraits):
     d = Float
     black = Float
     peak = Float
+
+    text = Unicode
 
     def __init__(self, uri, **k):
         super(Camera, self).__init__(**k)
@@ -209,7 +209,7 @@ class Camera(HasTraits):
         x -= 600
         y -= 700
         t = np.deg2rad(15)
-        b = 30/4.
+        b = 150/4.
         a = 250/4.
         h = .8
         x, y = np.cos(t)*x+np.sin(t)*y, -np.sin(t)*x+np.cos(t)*y
@@ -285,6 +285,15 @@ class Camera(HasTraits):
         self.b = wb*px
         self.d = wab*px
         self.e = we
+
+        self.text = (u"centroid: %.5g %.5g µm\n"
+            u"width: %.5g %.5g µm\n"
+            u"angle, ell: %.5g° %.5g\n"
+            u"black/peak: %.5g %.5g\n") % (
+                self.x, self.y,
+                self.a, self.b,
+                self.t, self.e,
+                self.black, self.peak)
 
         ima = angle_sum(im, wt, binsize=1)
         imb = angle_sum(im, wt+np.pi/2, binsize=1)
@@ -416,8 +425,9 @@ class Bullseye(HasTraits):
     camera = Instance(Camera)
 
     palette = Enum("gray", "jet", "cool", "hot", "prism", "hsv")
+    invert = Bool(True)
 
-    traits_view = View(HGroup( VGroup(
+    traits_view = View(HGroup(VGroup(
         HGroup(
             VGroup(
                 Item("object.camera.x", label="Centroid X",
@@ -452,7 +462,8 @@ class Bullseye(HasTraits):
             HGroup(
                 "object.camera.active",
                 UItem("object.camera.auto_shutter"),
-                UItem("palette")),
+                UItem("palette"),
+                "invert"),
             UItem("abplots", editor=ComponentEditor(),
                 width=-200, height=-300, resizable=False),
             ),
@@ -467,30 +478,31 @@ class Bullseye(HasTraits):
     def __init__(self, uri="first:", **k):
         super(Bullseye, self).__init__(**k)
         self.data = ArrayPlotData()
+        self.label = None
 
         self.camera = Camera(uri)
         self.camera.data = self.data
         self.camera.initialize()
 
-        self.screen = Plot(self.data, bgcolor="black",
-                border_visible=True, border_color="white",
+        self.screen = Plot(self.data, bgcolor="lightgray",
+                border_visible=True, border_color="black",
                 padding=0, resizable="hv",
                 )
-        self.screen.index_axis.tick_color = "white"
-        self.screen.value_axis.tick_color = "white"
-        self.screen.index_axis.tick_label_color = "white"
-        self.screen.value_axis.tick_label_color = "white"
-        self.screen.index_axis.axis_line_color = "white"
-        self.screen.value_axis.axis_line_color = "white"
+        self.screen.index_axis.tick_color = "black"
+        self.screen.value_axis.tick_color = "black"
+        self.screen.index_axis.tick_label_color = "black"
+        self.screen.value_axis.tick_label_color = "black"
+        self.screen.index_axis.axis_line_color = "black"
+        self.screen.value_axis.axis_line_color = "black"
         self.screen.index_grid.visible = False
         self.screen.value_grid.visible = False
 
         self.horiz = Plot(self.data,
                 orientation="h",
                 resizable="h", padding=0, height=100,
-                bgcolor="black", title="vertical sum",
-                border_visible=False, border_color="white")
-        self.horiz.title_color = "white"
+                bgcolor="lightgray", title="",
+                border_visible=False)
+        self.horiz.title_color = "black"
         self.horiz.title_font = "modern 10"
         self.horiz.title_position = "left"
         self.horiz.title_angle = 90
@@ -503,28 +515,36 @@ class Bullseye(HasTraits):
         self.vert = Plot(self.data,
                 orientation="v",
                 resizable="v", padding=0, width=100,
-                bgcolor="black", title="horizontal sum",
-                border_visible=False, border_color="white")
+                bgcolor="lightgray", title="",
+                border_visible=False)
         self.vert.index_axis.visible = False
         self.vert.value_axis.visible = False
         self.vert.index_grid.visible = True
         self.vert.value_grid.visible = False
         self.vert.value_mapper.range.low_setting = -.05
-        self.vert.title_color = "white"
+        self.vert.title_color = "black"
         self.vert.title_font = "modern 10"
         self.vert.title_position = "bottom"
 
         #self.vert.value_range = self.horiz.value_range
         self.vert.index_range = self.screen.value_range
 
-        self.mini = VPlotContainer(
+        self.mini = Plot(self.data,
                 width=100, height=100, resizable="",
-                padding=0, fill_padding=False, bgcolor="black")
+                padding=0, bgcolor="lightgray",
+                border_visible=False)
+        self.mini.index_axis.visible = False
+        self.mini.value_axis.visible = False
+        self.label = PlotLabel(component=self.mini,
+                overlay_position="inside left",
+                font="modern 10",
+                text=self.camera.text)
+        self.mini.overlays.append(self.label)
 
         self.plots = GridPlotContainer(shape=(2,2), padding=0,
-                use_backbuffer=True, fill_padding=True,
+                use_backbuffer=True,
                 spacing=(5,5), halign="left", valign="bottom",
-                bgcolor="black",
+                bgcolor="lightgray",
                 component_grid = [
                     [self.vert, self.screen],
                     [self.mini, self.horiz]])
@@ -533,10 +553,8 @@ class Bullseye(HasTraits):
             tool_mode="box", alpha=.3,
             always_on_modifier="shift",
             always_on=False,
-            x_max_zoom_factor=1e2,
-            y_max_zoom_factor=1e2,
-            x_min_zoom_factor=0.5,
-            y_min_zoom_factor=0.5,
+            x_max_zoom_factor=1e2, y_max_zoom_factor=1e2,
+            x_min_zoom_factor=0.5, y_min_zoom_factor=0.5,
             zoom_factor=1.2))
         self.screen.tools.append(PanTool(self.screen))
 
@@ -545,42 +563,41 @@ class Bullseye(HasTraits):
                 interpolation="nearest",
                 colormap=color_map_name_dict[self.palette],
                 )[0]
-        self.screenplot.color_mapper.range.low_setting = 0
-        self.screenplot.color_mapper.range.high_setting = 1
+        self.set_invert()
         self.camera.grid = self.screenplot.index
         self.camera.gridm = self.screenplot.index_mapper
         t = ImageInspectorTool(self.screenplot)
         self.screen.tools.append(t)
         self.screenplot.overlays.append(ImageInspectorOverlay(
             component=self.screenplot, image_inspector=t,
-            border_size=0, bgcolor="darkgray", align="ur",
+            border_size=0, bgcolor="transparent", align="ur",
             tooltip_mode=False, font="modern 10"))
 
         self.asum = Plot(self.data,
                 padding=0, height=150,
-                bgcolor="black", title="major axis sum",
-                border_visible=False, border_color="white")
-        self.asum.index_axis.tick_color = "white"
+                bgcolor="lightgray", title="major axis",
+                border_visible=False, border_color="black")
+        self.asum.index_axis.tick_color = "black"
         self.asum.value_axis.visible = False
-        self.asum.index_axis.tick_label_color = "white"
-        self.asum.index_axis.axis_line_color = "white"
+        self.asum.index_axis.tick_label_color = "black"
+        self.asum.index_axis.axis_line_color = "black"
         self.asum.value_grid.visible = False
-        self.asum.title_color = "white"
+        self.asum.title_color = "black"
         self.asum.title_font = "modern 10"
         self.asum.title_position = "left"
         self.asum.title_angle = 90
 
         self.bsum = Plot(self.data,
                 padding=0, height=150,
-                bgcolor="black",
-                title="minor axis sum",
-                border_visible=False, border_color="white")
-        self.bsum.index_axis.tick_color = "white"
+                bgcolor="lightgray",
+                title="minor axis",
+                border_visible=False, border_color="black")
+        self.bsum.index_axis.tick_color = "black"
         self.bsum.value_axis.visible = False
-        self.bsum.index_axis.tick_label_color = "white"
-        self.bsum.index_axis.axis_line_color = "white"
+        self.bsum.index_axis.tick_label_color = "black"
+        self.bsum.index_axis.axis_line_color = "black"
         self.bsum.value_grid.visible = False
-        self.bsum.title_color = "white"
+        self.bsum.title_color = "black"
         self.bsum.title_font = "modern 10"
         self.bsum.title_position = "left"
         self.bsum.title_angle = 90
@@ -589,14 +606,14 @@ class Bullseye(HasTraits):
         #self.bsum.index_range = self.asum.index_range
 
         self.abplots = VPlotContainer(padding=20,
-                use_backbuffer=True, fill_padding=True,
-                spacing=10, bgcolor="black")
+                use_backbuffer=True,
+                spacing=10, bgcolor="lightgray", fill_padding=True)
         self.abplots.add(self.bsum)
         self.abplots.add(self.asum)
 
         #self.all_plots = VPlotContainer(padding=0,
-        #        use_backbuffer=True, fill_padding=True,
-        #       spacing=0, bgcolor="black")
+        #        use_backbuffer=True,
+        #       spacing=0, bgcolor="lightgray")
         #self.all_plots.add(self.abplots)
         #self.all_plots.add(self.plots)
         self.plots.tools.append(SaveTool(self.plots,
@@ -621,7 +638,6 @@ class Bullseye(HasTraits):
                 q = ("%s%s_mark" % (r, p), "%s_bar" % r)
                 s.plot(q, type="line", color="green")
 
- 
     def __del__(self):
         self.close()
 
@@ -630,9 +646,18 @@ class Bullseye(HasTraits):
 
     @on_trait_change("palette")
     def set_colormap(self):
-        p = self.screen.plots["img"][0]
+        p = self.screenplot
         m = color_map_name_dict[self.palette]
         p.color_mapper = m(p.value_range)
+        self.set_invert()
+        p.request_redraw()
+
+    @on_trait_change("invert")
+    def set_invert(self):
+        p = self.screenplot
+        a, b = self.invert and (1, 0) or (0, 1)
+        p.color_mapper.range.low_setting = a
+        p.color_mapper.range.high_setting = b
 
     #@on_trait_change("screen.index_range.updated")
     @on_trait_change("screen.value_range.updated")
@@ -643,6 +668,12 @@ class Bullseye(HasTraits):
         b, t = self.screen.value_range.low, self.screen.value_range.high
         px = self.camera.pixelsize
         self.camera.roi = [l/px, b/px, (r-l)/px, (t-b)/px]
+
+    @on_trait_change("camera.text")
+    def set_text(self):
+        if self.label is not None:
+            self.label.text = self.camera.text
+
 
 def main():
     logging.basicConfig(level=logging.DEBUG,
