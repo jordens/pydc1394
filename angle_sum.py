@@ -19,31 +19,42 @@ import numpy as np
 
 def angle_sum(m, angle, dtype=None, out=None,
         aspect=1., binsize=0):
-    """take the sum of the 2D array `m` along an axis at `angle`.
-    
-    The `angle` is defined such that::
+    """Compute the sum of a 2D array along an rotated axis.
 
-        angle_sum(m, angle=0) == np.sum(m, axis=0)
-        angle_sum(m, angle=np.pi/2) == np.sum(m, axis=1)
+    Parameters
+    ----------
+    m : array_like, shape(N, M)
+        2D input array to be summed
+    angle : float
+        The angle of the summation direction defined such that:
+            angle_sum(m, angle=0) == np.sum(m, axis=0)
+            angle_sum(m, angle=np.pi/2) == np.sum(m, axis=1)
+    aspect : float
+        The input bin aspect ratio (second dimension/first dimension).
+    binsize : float
+        The output bin size in units of the first input dimension bin
+        size. If no binsize is given, it defaults to the "natural bin
+        size" which is the larger projection of the two input bin sizes
+        onto the output dimension (the axis perpendicular to the
+        summation axis).
 
+    Returns
+    -------
+    out : ndarray, shape(K)
+        The sum of `m` along the axis at `angle`.
+
+    Notes
+    -----
     The summation angle is relative to the first dimension.
-    For 0<=angle<=pi/2:
-      the value at [0,0] ends up in the first bin and
-      the value at [-1,-1] ends up in the last bin.
+
+    For 0<=angle<=pi/2 the value at [0,0] ends up in the first bin and
+    the value at [-1,-1] ends up in the last bin.
+
     For angle=3/4*pi the summation is along the diagonal.
     For angle=3/4*pi the summation is along the antidiagonal.
    
     The origin of the rotation is the [0,0] index. This determines the
     bin rounding.
-
-    The input bin aspect ratio (second dimension/first dimension)
-    is given by `aspect`.
-
-    The output bin size is given by `binsize` in units of the first
-    input dimension bin size. If no binsize is given, it defaults to
-    the "natural bin size" which is the larger projection of the two
-    input bin sizes onto the output dimension
-    (the axis perpendicular to the summation axis).
 
     Up to index flipping, limits, rounding, offset and the definition of
     `angle` the output `o` is:
@@ -53,7 +64,12 @@ def angle_sum(m, angle, dtype=None, out=None,
       i(l,k) = \\cos(\\alpha) l - \\sin(\\alpha) k
       j(l,k) = \\sin(\\alpha) l + \\cos(\\alpha) k
 
+    There is no interpolation and artefacts are likely.
 
+    The full array sum is strictly conserved.
+
+    Examples
+    --------
     >>> m = np.arange(9.).reshape((3, 3))
     >>> np.all(angle_sum(m, 0) == m.sum(axis=0))
     True
