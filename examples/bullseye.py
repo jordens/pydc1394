@@ -168,12 +168,10 @@ class Camera(HasTraits):
         b = int(min(self.height, max(0, b+self.height/2)))
         w = int(min(self.width-l, max(128, w)))
         h = int(min(self.height-b, max(128, h)))
-        t = self.height-h-b
         if self.cam is not None:
-            (w, h), (l, t), _, _ = self.mode.setup(
-                    (w, h), (l, t), "Y16")
+            (w, h), (l, b), _, _ = self.mode.setup(
+                    (w, h), (l, b), "Y16")
             logging.debug("new roi %s" % (self.mode.roi,))
-        b = self.height-h-t
         self.bounds = l, b, w, h
         logging.debug("new bounds %s" % (self.bounds,))
 
