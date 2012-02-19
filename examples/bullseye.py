@@ -153,10 +153,10 @@ class Camera(HasTraits):
                     s = "="
             except TraitError:
                 break
+            logging.debug("1%%>%g, t%s: %g" % (p, s, self.shutter))
             # ensure all frames with old settings are gone
             self.cam.flush()
             self.cam.dequeue().enqueue()
-            logging.debug("1%%>%g, t%s: %g" % (p, s, self.shutter))
             if s == "=":
                 break
         # revert framerate and active state
@@ -188,15 +188,6 @@ class Camera(HasTraits):
         self.data.data_changed = {"changed": upd.keys()}
         if self.grid is not None:
             self.grid.set_data(xbounds, ybounds)
-            #enforce data/screen aspect ratio 1
-            sl, sr, sb, st = self.gridm.screen_bounds
-            dl, db = self.gridm.range.low
-            dr, dt = self.gridm.range.high
-            dsdx = float(sr-sl)/(dr-dl)
-            dt_new = db+(st-sb)/dsdx
-            #dsdy = float(st-sb)/(dt-db)
-            #print dsdx, dsdy, dt, dt_new
-            self.gridm.range.y_range.high_setting = dt_new
 
     def get_dummy(self):
         px = self.pixelsize
@@ -222,10 +213,11 @@ class Camera(HasTraits):
     def capture(self):
         if self.cam:
             im_ = self.cam.dequeue()
-            im = np.array(im_).astype("float")/(1<<16)
+            im = np.array(im_).copy()
             im_.enqueue()
+            im = im.astype("float")/float(1<<16)
             # undo gamma
-            logging.debug("im shape, ptp %s %s" % (im.shape, im.ptp()))
+            #logging.debug("im shape, ptp %s %s" % (im.shape, im.ptp()))
         else:
             im = self.get_dummy()
         if self.average > 1 and self.im.shape == im.shape:
@@ -267,6 +259,8 @@ class Camera(HasTraits):
 
     def process(self):
         im = self.im
+
+        #TODO: repeat this a few times and crop the data
         black, m00, m10, m01, m20, m02, m11, wa, wb, wt, we, wab = \
                 self.gauss_process(im, background=self.background)
 
@@ -286,21 +280,31 @@ class Camera(HasTraits):
         self.d = wab*px
         self.e = we
 
-        self.text = (u"centroid: %.5g %.5g µm\n"
-            u"width: %.5g %.5g µm\n"
-            u"angle, ell: %.5g° %.5g\n"
-            u"black/peak: %.5g %.5g\n") % (
-                self.x, self.y,
+        fields = (self.x, self.y,
                 self.a, self.b,
                 self.t, self.e,
                 self.black, self.peak)
 
+        logging.info(("% 8.4g,"*len(fields)) % fields)
+
+        self.text = (
+            u"centroid x: %.4g µm\n"
+            u"centroid y: %.4g µm\n"
+            u"major: %.4g µm\n"
+            u"minor: %.4g µm\n"
+            u"angle: %.4g°\n"
+            u"ellipticity: %.4g\n"
+            u"black: %.4g\n"
+            u"peak: %.4g\n"
+            ) % fields
+
         ima = angle_sum(im, wt, binsize=1)
         imb = angle_sum(im, wt+np.pi/2, binsize=1)
+        #TODO: fix half pixel offset
         xc, yc = m10-im.shape[1]/2., m01-im.shape[0]/2.
         xcr = np.cos(wt)*xc+np.sin(wt)*yc+ima.shape[0]/2.
         ycr = -np.sin(wt)*xc+np.cos(wt)*yc+imb.shape[0]/2.
-        rad = 3
+        rad = 3/2.
         ima = ima[int(max(0, xcr-rad*wa)):
                   int(min(ima.shape[0], xcr+rad*wa))]
         imb = imb[int(max(0, ycr-rad*wb)):
@@ -405,7 +409,7 @@ class Camera(HasTraits):
                 self.auto_shutter_requested = False
             self.capture()
             self.process()
-            logging.debug("image processed")
+            #logging.debug("image processed")
         logging.debug("stop")
         self.stop()
         self.thread = None
@@ -444,11 +448,11 @@ class Bullseye(HasTraits):
                     format_str=u"%.4g µm"),
                 Item("object.camera.b", label="Minor width",
                     format_str=u"%.4g µm"),
-                Item("object.camera.d", label="Mean width",
-                    format_str=u"%.4g µm"),
+                #Item("object.camera.d", label="Mean width",
+                #    format_str=u"%.4g µm"),
                 # minor/major
-                #Item("object.camera.e", label="Ellipticity",
-                #    format_str=u"%.4g"),
+                Item("object.camera.e", label="Ellipticity",
+                    format_str=u"%.4g"),
                 Item("object.camera.peak", label="Peak",
                     format_str=u"%.4g")),
             style="readonly"),
@@ -477,32 +481,24 @@ class Bullseye(HasTraits):
 
     def __init__(self, uri="first:", **k):
         super(Bullseye, self).__init__(**k)
-        self.data = ArrayPlotData()
         self.label = None
+        self.gridm = None
 
+        self.data = ArrayPlotData()
         self.camera = Camera(uri)
         self.camera.data = self.data
         self.camera.initialize()
 
         self.screen = Plot(self.data, bgcolor="lightgray",
-                border_visible=True, border_color="black",
+                border_visible=False,
                 padding=0, resizable="hv",
                 )
-        self.screen.index_axis.tick_color = "black"
-        self.screen.value_axis.tick_color = "black"
-        self.screen.index_axis.tick_label_color = "black"
-        self.screen.value_axis.tick_label_color = "black"
-        self.screen.index_axis.axis_line_color = "black"
-        self.screen.value_axis.axis_line_color = "black"
         self.screen.index_grid.visible = False
         self.screen.value_grid.visible = False
 
         self.horiz = Plot(self.data,
-                orientation="h",
-                resizable="h", padding=0, height=100,
-                bgcolor="lightgray", title="",
-                border_visible=False)
-        self.horiz.title_color = "black"
+                orientation="h", resizable="h", padding=0, height=100,
+                bgcolor="lightgray", title="", border_visible=False)
         self.horiz.title_font = "modern 10"
         self.horiz.title_position = "left"
         self.horiz.title_angle = 90
@@ -510,19 +506,16 @@ class Bullseye(HasTraits):
         self.horiz.value_axis.visible = False
         self.horiz.index_grid.visible = True
         self.horiz.value_grid.visible = False
-        self.horiz.value_mapper.range.low_setting = -.05
+        self.horiz.value_mapper.range.low_setting = -.1
         self.horiz.index_range = self.screen.index_range
         self.vert = Plot(self.data,
-                orientation="v",
-                resizable="v", padding=0, width=100,
-                bgcolor="lightgray", title="",
-                border_visible=False)
+                orientation="v", resizable="v", padding=0, width=100,
+                bgcolor="lightgray", title="", border_visible=False)
         self.vert.index_axis.visible = False
         self.vert.value_axis.visible = False
         self.vert.index_grid.visible = True
         self.vert.value_grid.visible = False
-        self.vert.value_mapper.range.low_setting = -.05
-        self.vert.title_color = "black"
+        self.vert.value_mapper.range.low_setting = -.1
         self.vert.title_font = "modern 10"
         self.vert.title_position = "bottom"
 
@@ -565,7 +558,7 @@ class Bullseye(HasTraits):
                 )[0]
         self.set_invert()
         self.camera.grid = self.screenplot.index
-        self.camera.gridm = self.screenplot.index_mapper
+        self.gridm = self.screenplot.index_mapper
         t = ImageInspectorTool(self.screenplot)
         self.screen.tools.append(t)
         self.screenplot.overlays.append(ImageInspectorOverlay(
@@ -576,13 +569,9 @@ class Bullseye(HasTraits):
         self.asum = Plot(self.data,
                 padding=0, height=150,
                 bgcolor="lightgray", title="major axis",
-                border_visible=False, border_color="black")
-        self.asum.index_axis.tick_color = "black"
+                border_visible=False)
         self.asum.value_axis.visible = False
-        self.asum.index_axis.tick_label_color = "black"
-        self.asum.index_axis.axis_line_color = "black"
         self.asum.value_grid.visible = False
-        self.asum.title_color = "black"
         self.asum.title_font = "modern 10"
         self.asum.title_position = "left"
         self.asum.title_angle = 90
@@ -591,13 +580,9 @@ class Bullseye(HasTraits):
                 padding=0, height=150,
                 bgcolor="lightgray",
                 title="minor axis",
-                border_visible=False, border_color="black")
-        self.bsum.index_axis.tick_color = "black"
+                border_visible=False)
         self.bsum.value_axis.visible = False
-        self.bsum.index_axis.tick_label_color = "black"
-        self.bsum.index_axis.axis_line_color = "black"
         self.bsum.value_grid.visible = False
-        self.bsum.title_color = "black"
         self.bsum.title_font = "modern 10"
         self.bsum.title_position = "left"
         self.bsum.title_angle = 90
@@ -662,12 +647,21 @@ class Bullseye(HasTraits):
     #@on_trait_change("screen.index_range.updated")
     @on_trait_change("screen.value_range.updated")
     def set_range(self):
-        #l, b = self.screenplot.range.low
-        #r, t = self.screenplot.range.high
         l, r = self.screen.index_range.low, self.screen.index_range.high
         b, t = self.screen.value_range.low, self.screen.value_range.high
         px = self.camera.pixelsize
         self.camera.roi = [l/px, b/px, (r-l)/px, (t-b)/px]
+        if self.gridm is not None:
+            #enforce data/screen aspect ratio 1
+            sl, sr, sb, st = self.gridm.screen_bounds
+            dl, db = self.gridm.range.low
+            dr, dt = self.gridm.range.high
+            #dsdx = float(sr-sl)/(dr-dl)
+            dsdy = float(st-sb)/(dt-db)
+            #dt_new = db+(st-sb)/dsdx
+            if dsdy:
+                dr_new = dl+(sr-sl)/dsdy
+                self.gridm.range.x_range.high_setting = dr_new
 
     @on_trait_change("camera.text")
     def set_text(self):
@@ -678,8 +672,8 @@ class Bullseye(HasTraits):
 def main():
     logging.basicConfig(level=logging.DEBUG,
         format='%(asctime)s %(levelname)s %(message)s')
-    #b = Bullseye("first:")
-    b = Bullseye("none:")
+    b = Bullseye("first:")
+    #b = Bullseye("none:")
     #b = Bullseye("guid:b09d01009981f9")
     b.configure_traits()
     b.close()
