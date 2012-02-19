@@ -5,7 +5,7 @@
 # GPL-2
 
 from traits.trait_base import ETSConfig
-ETSConfig.toolkit = "wx"
+ETSConfig.toolkit = "qt4"
 from traitsui.api import toolkit
 # fix window color on unity
 if ETSConfig.toolkit == "wx":
@@ -63,8 +63,6 @@ class Camera(HasTraits):
     roi = ListFloat([-1280/2, -960/2, 1280, 960], minlen=4, maxlen=4)
 
     background = Range(0, 50, 5)
-
-    update_image = Bool(True)
 
     x = Float
     y = Float
@@ -244,6 +242,8 @@ class Camera(HasTraits):
             #im -= bg_mean
             black = np.percentile(im, background)
             im -= black
+        else:
+            black = 0.
         y, x = np.ogrid[:im.shape[0], :im.shape[1]]
         m00 = im.sum() or 1.
         m10, m01 = (im*x).sum()/m00, (im*y).sum()/m00
@@ -267,11 +267,11 @@ class Camera(HasTraits):
 
     def process(self):
         im = self.im
-        px = self.pixelsize
-        l, b, w, h = self.bounds
-
         black, m00, m10, m01, m20, m02, m11, wa, wb, wt, we, wab = \
                 self.gauss_process(im, background=self.background)
+
+        px = self.pixelsize
+        l, b, w, h = self.bounds
 
         self.m00 = m00
         self.m20 = m20
@@ -299,19 +299,6 @@ class Camera(HasTraits):
         xa = np.arange(ima.shape[0]) - (min(0, rad*wa-xcr)+xcr)
         yb = np.arange(imb.shape[0]) - (min(0, rad*wb-ycr)+ycr)
 
-        upd = dict((
-            ("imx", im.sum(axis=0)),
-            ("imy", im.sum(axis=1)),
-            ("ima", ima),
-            ("imb", imb),
-            ("a", xa*px),
-            ("b", yb*px),
-            ))
-        if self.update_image:
-            upd["img"] = im
-        self.data.arrays.update(upd)
-        self.data.data_changed = {"changed": upd.keys()}
-
         x = np.arange(l, l+w)-self.width/2
         y = np.arange(b, b+h)-self.height/2
 
@@ -319,16 +306,22 @@ class Camera(HasTraits):
         gry = m00/(np.pi**.5*wb/2/2**.5)*np.exp(-(2**.5*2*yb/wb)**2)
         gx = m00/(2*np.pi*m20)**.5*np.exp(-(x-self.x/px)**2/m20/2)
         gy = m00/(2*np.pi*m02)**.5*np.exp(-(y-self.y/px)**2/m02/2)
-        self.data.set_data("gx", gx)
-        self.data.set_data("gy", gy)
-        self.data.set_data("grx", grx)
-        self.data.set_data("gry", gry)
 
+        upd = dict((
+            ("img", im),
+            ("imx", im.sum(axis=0)), ("imy", im.sum(axis=1)),
+            ("ima", ima), ("imb", imb),
+            ("a", xa*px), ("b", yb*px),
+            ("gx", gx), ("gy", gy),
+            ("grx", grx), ("gry", gry),
+            ))
+        self.data.arrays.update(upd)
+        self.data.data_changed = {"changed": upd.keys()}
         self.update_markers()
 
     def update_markers(self):
         px = self.pixelsize
-        ts = np.linspace(0, 2*np.pi, 50)
+        ts = np.linspace(0, 2*np.pi, 40)
         ex, ey = self.a*np.cos(ts), self.b*np.sin(ts)
         t = np.deg2rad(self.t)
         ex = ex*np.cos(t)-ey*np.sin(t)
@@ -346,39 +339,52 @@ class Camera(HasTraits):
         self.data.set_data("x0_mark", 2*[self.x])
         self.data.set_data("xp_mark", 2*[self.x+2*px*self.m20**.5])
         self.data.set_data("xm_mark", 2*[self.x-2*px*self.m20**.5])
-        self.data.set_data("x_bar", [0, self.m00/(2*np.pi*self.m20)**.5])
+        self.data.set_data("x_bar",
+                [0, self.m00/(2*np.pi*self.m20)**.5])
         self.data.set_data("y0_mark", 2*[self.y])
         self.data.set_data("yp_mark", 2*[self.y+2*px*self.m02**.5])
         self.data.set_data("ym_mark", 2*[self.y-2*px*self.m02**.5])
-        self.data.set_data("y_bar", [0, self.m00/(2*np.pi*self.m02)**.5])
-
+        self.data.set_data("y_bar",
+                [0, self.m00/(2*np.pi*self.m02)**.5])
         self.data.set_data("a0_mark", 2*[0])
         self.data.set_data("ap_mark", 2*[self.a/2])
         self.data.set_data("am_mark", 2*[-self.a/2])
-        self.data.set_data("a_bar", [0, self.m00/(np.pi**.5*self.a/px/2/2**.5)])
+        self.data.set_data("a_bar",
+                [0, self.m00/(np.pi**.5*self.a/px/2/2**.5)])
         self.data.set_data("b0_mark", 2*[0])
         self.data.set_data("bp_mark", 2*[self.b/2])
         self.data.set_data("bm_mark", 2*[-self.b/2])
-        self.data.set_data("b_bar", [0, self.m00/(np.pi**.5*self.b/px/2/2**.5)])
+        self.data.set_data("b_bar",
+                [0, self.m00/(np.pi**.5*self.b/px/2/2**.5)])
 
 
     @on_trait_change("active")
     def _start_me(self, value):
         if value:
             if self.thread is not None:
-                if not self.thread.is_alive():
-                    self.thread.join()
-                    self.thread = None
+                if self.thread.is_alive():
+                    logging.warning(
+                            "already have a capture thread running")
+                    return
                 else:
-                    logging.warning("already have a capture thread, try again")
-                return
-            else:
-                self.thread = Thread(target=self.run)
-                self.thread.start()
+                    self.thread.join()
+            self.thread = Thread(target=self.run)
+            self.thread.start()
         else:
             if self.thread is not None:
-                self.thread.join()
-                assert self.thread is None
+                self.thread.join(timeout=5)
+                if self.thread is not None:
+                    if self.thread.is_alive():
+                        logging.warning(
+                                "capture thread did not terminate")
+                        return
+                    else:
+                        logging.warning(
+                                "capture thread crashed")
+                        self.thread = None
+            else:
+                logging.warning(
+                    "capture thread terminated")
 
     def run(self):
         self.update_roi()
@@ -389,9 +395,8 @@ class Camera(HasTraits):
                 self.auto()
                 self.auto_shutter_requested = False
             self.capture()
-            logging.debug("captured")
             self.process()
-            logging.debug("processed")
+            logging.debug("image processed")
         logging.debug("stop")
         self.stop()
         self.thread = None
@@ -401,7 +406,7 @@ slider_editor=DefaultOverride(mode="slider")
 
 class Bullseye(HasTraits):
     plots = Instance(GridPlotContainer)
-    abplots = Instance(HPlotContainer)
+    abplots = Instance(VPlotContainer)
     all_plots = Instance(VPlotContainer)
     screen = Instance(Plot)
     horiz = Instance(Plot)
@@ -412,30 +417,31 @@ class Bullseye(HasTraits):
 
     palette = Enum("gray", "jet", "cool", "hot", "prism", "hsv")
 
-    traits_view = View(HGroup(
-        VGroup(
+    traits_view = View(HGroup( VGroup(
+        HGroup(
             VGroup(
                 Item("object.camera.x", label="Centroid X",
                     format_str=u"%.4g µm"),
-                Item("object.camera.y", label="Centroid Y",
+                # widths are full width at 1/e^2 intensity
+                Item("object.camera.a", label="Major width",
                     format_str=u"%.4g µm"),
                 Item("object.camera.t", label="Rotation",
                     format_str=u"%.4g°"),
-                # widths are full width at 1/e^2 intensity
-                Item("object.camera.a", label="Major width",
+                Item("object.camera.black", label="Black",
+                    format_str=u"%.4g")),
+            VGroup(
+                Item("object.camera.y", label="Centroid Y",
                     format_str=u"%.4g µm"),
                 Item("object.camera.b", label="Minor width",
                     format_str=u"%.4g µm"),
                 Item("object.camera.d", label="Mean width",
                     format_str=u"%.4g µm"),
                 # minor/major
-                Item("object.camera.e", label="Ellipticity",
-                    format_str=u"%.4g"),
-                Item("object.camera.black", label="Black",
-                    format_str=u"%.4g"),
+                #Item("object.camera.e", label="Ellipticity",
+                #    format_str=u"%.4g"),
                 Item("object.camera.peak", label="Peak",
-                    format_str=u"%.4g"),
-                style="readonly"),
+                    format_str=u"%.4g")),
+            style="readonly"),
             VGroup(
                 "object.camera.shutter",
                 "object.camera.gain",
@@ -445,19 +451,18 @@ class Bullseye(HasTraits):
                 ),
             HGroup(
                 "object.camera.active",
-                "object.camera.update_image",
                 UItem("object.camera.auto_shutter"),
-                "palette"),
+                UItem("palette")),
+            UItem("abplots", editor=ComponentEditor(),
+                width=-200, height=-300, resizable=False),
             ),
-        UItem("all_plots", editor=ComponentEditor(),
-            width=600, height=700),
+        #UItem("all_plots", editor=ComponentEditor(),
+        #    width=600, height=700),
         #VGroup(
-        #    UItem("plots", editor=ComponentEditor(),
-        #        width=(1280+105)/2, height=(960+105)/2),
-        #    UItem("abplots", editor=ComponentEditor(),
-        #        height=-200, resizable=False),
+            UItem("plots", editor=ComponentEditor(),
+                width=800),#width=600, height=600),
         #    ),
-        ), resizable=True, title="Bullseye")
+        ), resizable=True, title="Bullseye", width=1000)
 
     def __init__(self, uri="first:", **k):
         super(Bullseye, self).__init__(**k)
@@ -493,7 +498,7 @@ class Bullseye(HasTraits):
         self.horiz.value_axis.visible = False
         self.horiz.index_grid.visible = True
         self.horiz.value_grid.visible = False
-        self.horiz.value_mapper.range.low_setting = 0
+        self.horiz.value_mapper.range.low_setting = -.05
         self.horiz.index_range = self.screen.index_range
         self.vert = Plot(self.data,
                 orientation="v",
@@ -504,6 +509,7 @@ class Bullseye(HasTraits):
         self.vert.value_axis.visible = False
         self.vert.index_grid.visible = True
         self.vert.value_grid.visible = False
+        self.vert.value_mapper.range.low_setting = -.05
         self.vert.title_color = "white"
         self.vert.title_font = "modern 10"
         self.vert.title_position = "bottom"
@@ -551,7 +557,7 @@ class Bullseye(HasTraits):
             tooltip_mode=False, font="modern 10"))
 
         self.asum = Plot(self.data,
-                padding=0,
+                padding=0, height=150,
                 bgcolor="black", title="major axis sum",
                 border_visible=False, border_color="white")
         self.asum.index_axis.tick_color = "white"
@@ -565,7 +571,7 @@ class Bullseye(HasTraits):
         self.asum.title_angle = 90
 
         self.bsum = Plot(self.data,
-                padding=0,
+                padding=0, height=150,
                 bgcolor="black",
                 title="minor axis sum",
                 border_visible=False, border_color="white")
@@ -582,18 +588,18 @@ class Bullseye(HasTraits):
         #self.bsum.value_range = self.asum.value_range
         #self.bsum.index_range = self.asum.index_range
 
-        self.abplots = HPlotContainer(padding=20,
+        self.abplots = VPlotContainer(padding=20,
                 use_backbuffer=True, fill_padding=True,
                 spacing=10, bgcolor="black")
-        self.abplots.add(self.asum)
         self.abplots.add(self.bsum)
+        self.abplots.add(self.asum)
 
-        self.all_plots = VPlotContainer(padding=0,
-                use_backbuffer=True, fill_padding=True,
-                spacing=0, bgcolor="black")
-        self.all_plots.add(self.abplots)
-        self.all_plots.add(self.plots)
-        self.all_plots.tools.append(SaveTool(self.all_plots,
+        #self.all_plots = VPlotContainer(padding=0,
+        #        use_backbuffer=True, fill_padding=True,
+        #       spacing=0, bgcolor="black")
+        #self.all_plots.add(self.abplots)
+        #self.all_plots.add(self.plots)
+        self.plots.tools.append(SaveTool(self.plots,
             filename="bullseye.pdf"))
 
         self.horiz.plot(("x", "imx"), type="line", color="red")
@@ -613,7 +619,6 @@ class Bullseye(HasTraits):
                 ("a", self.asum), ("b", self.bsum)]:
             for p in "0 p m".split():
                 q = ("%s%s_mark" % (r, p), "%s_bar" % r)
-                logging.debug(q)
                 s.plot(q, type="line", color="green")
 
  
@@ -642,8 +647,8 @@ class Bullseye(HasTraits):
 def main():
     logging.basicConfig(level=logging.DEBUG,
         format='%(asctime)s %(levelname)s %(message)s')
-    b = Bullseye("first:")
-    #b = Bullseye("none:")
+    #b = Bullseye("first:")
+    b = Bullseye("none:")
     #b = Bullseye("guid:b09d01009981f9")
     b.configure_traits()
     b.close()
