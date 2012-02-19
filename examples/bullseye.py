@@ -1,5 +1,7 @@
 #!/usr/bin/python
+# -*- coding: utf8 -*-
 # (c) Robert Jordens <jordens@debian.org>
+#
 # GPL-2
 
 from traits.trait_base import ETSConfig
@@ -58,7 +60,9 @@ class Camera(HasTraits):
     #roi = RoiTrait((0, 0, 1280, 960))
     roi = ListFloat([-1280/2, -960/2, 1280, 960], minlen=4, maxlen=4)
 
-    background = Bool(True)
+    background = Range(0, 50, 5)
+
+    update_image = Bool(True)
 
     x = Float
     y = Float
@@ -182,7 +186,7 @@ class Camera(HasTraits):
         x -= 600
         y -= 700
         t = np.deg2rad(15)
-        b = 150/4.
+        b = 30/4.
         a = 250/4.
         h = .8
         x, y = np.cos(t)*x+np.sin(t)*y, -np.sin(t)*x+np.cos(t)*y
@@ -206,47 +210,45 @@ class Camera(HasTraits):
         else:
             self.im = im
 
+    def gauss_process(self, im, background=0):
+        if background > 0:
+            #imr = im.ravel()
+            #low = stats.scoreatpercentile(imr, background)
+            #bg = imr[np.where(imr <= low)]
+            #bg_mean = bg.mean()
+            #im -= bg_mean
+            im -= np.percentile(im, background)
+        y, x = np.ogrid[:im.shape[0], :im.shape[1]]
+        m00 = im.sum() or 1.
+        m10, m01 = (im*x).sum()/m00, (im*y).sum()/m00
+        x -= m10
+        y -= m01
+        m20, m02 = (im*x**2).sum()/m00, (im*y**2).sum()/m00
+        m11 = (im*x*y).sum()/m00
+        g = np.sign(m20-m02)
+        if g == 0:
+            a = 2*2**.5*(m20+m02+2*np.abs(m11))**.5
+            b = 2*2**.5*(m20+m02-2*np.abs(m11))**.5
+            t = np.pi/4*np.sign(m11)
+        else:
+            q = g*((m20-m02)**2+4*m11**2)**.5
+            a = 2*2**.5*((m20+m02)+q)**.5
+            b = 2*2**.5*((m20+m02)-q)**.5
+            t = .5*np.arctan2(2*m11, m20-m02)
+        e = b/a
+        ab = 2*2**.5*(m20+m02)**.5
+        return m00, m10, m01, m20, m02, m11, a, b, t, e, ab
+
     def process(self):
         im = self.im
         px = self.pixelsize
         l, b, w, h = self.bounds
 
-        if self.background:
-            #imr = im.ravel()
-            #low = stats.scoreatpercentile(imr, 20)
-            #bg = imr[np.where(imr <= low)]
-            #bg_mean = bg.mean()
-            #im -= bg_mean
-            im -= np.percentile(im, 5)
+        m00, m10, m01, m20, m02, m11, wa, wb, wt, we, wab = \
+                self.gauss_process(im, background=self.background)
 
-        y, x = np.ogrid[b:b+h, l:l+w]
-        x -= 1280/2.
-        y -= 960/2.
-        xbounds = (np.r_[x[0, :], x[0, -1]+1]-.5)
-        ybounds = (np.r_[y[:, 0], y[-1, 0]+1]-.5)
-
-        m00 = im.sum() or 1.
-        imn = im/m00
-        m10, m01 = (imn*x).sum(), (imn*y).sum()
-        dx, dy = x-m10, y-m01
-        m20, m02 = (imn*dx**2).sum(), (imn*dy**2).sum()
-        m11 = (imn*dx*dy).sum()
-
-        g = np.sign(m20-m02)
-        if g == 0:
-            wa = 2*2**.5*(m20+m02+2*np.abs(m11))**.5
-            wb = 2*2**.5*(m20+m02-2*np.abs(m11))**.5
-            wt = np.pi/4*np.sign(m11)
-        else:
-            wq = g*((m20-m02)**2+4*m11**2)**.5
-            wa = 2*2**.5*((m20+m02)+wq)**.5
-            wb = 2*2**.5*((m20+m02)-wq)**.5
-            wt = .5*np.arctan2(2*m11, m20-m02)
-        we = wa/wb
-        wab = 2*2**.5*(m20+m02)**.5
-
-        self.x = m10*px
-        self.y = m01*px
+        self.x = (m10+l-1280/2)*px
+        self.y = (m01+b-960/2)*px
         self.t = np.rad2deg(wt)
         self.a = wa*px
         self.b = wb*px
@@ -264,8 +266,8 @@ class Camera(HasTraits):
         # (4950.0, 4999.5005)
         imr = np.array(Image.fromarray(im).rotate(
             angle=np.rad2deg(wt),
-            resample=Image.NEAREST, expand=True))
-        xc, yc = m10+1280/2-l-w/2, m01+960/2-b-h/2
+            resample=Image.BILINEAR, expand=True))
+        xc, yc = m10-im.shape[1]/2., m01-im.shape[0]/2.
         xcr = np.cos(wt)*xc+np.sin(wt)*yc+imr.shape[1]/2.
         ycr = -np.sin(wt)*xc+np.cos(wt)*yc+imr.shape[0]/2.
         rad = 3
@@ -277,8 +279,13 @@ class Camera(HasTraits):
         xa -= min(0, rad*wa-xcr)+xcr
         yb -= min(0, rad*wb-ycr)+ycr
 
+        y, x = np.ogrid[b:b+h, l:l+w]
+        x -= 1280/2.
+        y -= 960/2.
+        xbounds = (np.r_[x[0, :], x[0, -1]+1]-.5)
+        ybounds = (np.r_[y[:, 0], y[-1, 0]+1]-.5)
+
         upd = dict((
-            ("img", im),
             ("imx", im.sum(axis=0)),
             ("imy", im.sum(axis=1)),
             ("ima", imr.sum(axis=0)),
@@ -290,6 +297,8 @@ class Camera(HasTraits):
             ("xbounds", xbounds*px),
             ("ybounds", ybounds*px),
             ))
+        if self.update_image:
+            upd["img"] = im
         self.data.arrays.update(upd)
         self.data.data_changed = {"changed": upd.keys()}
         if self.grid is not None:
@@ -303,38 +312,55 @@ class Camera(HasTraits):
             #dsdy = float(st-sb)/(dt-db)
             #print dsdx, dsdy, dt, dt_new
             self.gridm.range.y_range.high_setting = dt_new
-       
-        return
 
-        gx = m00*self.camera.pixelsize/(2*np.pi*m20)**.5*np.exp(-x[:, 0]**2/m20/2)
-        gy = m00*self.camera.pixelsize/(2*np.pi*m02)**.5*np.exp(-y[0, :]**2/m02/2)
-
-        self.data.set_data("gauss_x", gx)
-        self.data.set_data("gauss_y", gy)
-
+        grx = m00/(np.pi**.5*wa/2/2**.5)*np.exp(-(2**.5*2*xa[0, :]/wa)**2)
+        gry = m00/(np.pi**.5*wb/2/2**.5)*np.exp(-(2**.5*2*yb[:, 0]/wb)**2)
+        gx = m00/(2*np.pi*m20)**.5*np.exp(-(x[0, :]-self.x/px)**2/m20/2)
+        gy = m00/(2*np.pi*m02)**.5*np.exp(-(y[:, 0]-self.y/px)**2/m02/2)
+        self.data.set_data("gx", gx)
+        self.data.set_data("gy", gy)
+        self.data.set_data("grx", grx)
+        self.data.set_data("gry", gry)
 
         ts = np.linspace(0, 2*np.pi, 50)
-        t = self.t/180*np.pi
-        ell2_x = self.x+.5*(
+        t = np.deg2rad(self.t)
+        ell1_x = self.x+.5*(
                 self.a*np.cos(ts)*np.cos(t)-self.b*np.sin(ts)*np.sin(t))
-        ell2_y = self.y+.5*(
+        ell1_y = self.y+.5*(
                 self.b*np.sin(ts)*np.cos(t)+self.a*np.cos(ts)*np.sin(t))
-        self.data.set_data("ell2_x", ell2_x)
-        self.data.set_data("ell2_y", ell2_y)
-        ai = np.linspace(-self.a, self.a, 2)
-        bi = np.linspace(-self.b, self.b, 2)
+        ell3_x = self.x+3*.5*(
+                self.a*np.cos(ts)*np.cos(t)-self.b*np.sin(ts)*np.sin(t))
+        ell3_y = self.y+3*.5*(
+                self.b*np.sin(ts)*np.cos(t)+self.a*np.cos(ts)*np.sin(t))
+        self.data.set_data("ell1_x", ell1_x)
+        self.data.set_data("ell1_y", ell1_y)
+        self.data.set_data("ell3_x", ell3_x)
+        self.data.set_data("ell3_y", ell3_y)
+        ai = np.linspace(-3*self.a/2, 3*self.a/2, 2)
+        bi = np.linspace(-3*self.b/2, 3*self.b/2, 2)
         self.data.set_data("a_x", ai*np.cos(t)+self.x)
         self.data.set_data("a_y", ai*np.sin(t)+self.y)
         self.data.set_data("b_x", -bi*np.sin(t)+self.x)
         self.data.set_data("b_y", bi*np.cos(t)+self.y)
+
         self.data.set_data("x0_mark", 2*[self.x])
-        self.data.set_data("xp_mark", 2*[max(ell2_x)])
-        self.data.set_data("xm_mark", 2*[min(ell2_x)])
-        self.data.set_data("x_bar", [0, max(self.data.get_data("imx"))])
+        self.data.set_data("xp_mark", 2*[self.x+2*px*m20**.5])
+        self.data.set_data("xm_mark", 2*[self.x-2*px*m20**.5])
+        self.data.set_data("x_bar", [0, m00/(2*np.pi*m20)**.5])
         self.data.set_data("y0_mark", 2*[self.y])
-        self.data.set_data("yp_mark", 2*[max(ell2_y)])
-        self.data.set_data("ym_mark", 2*[min(ell2_y)])
-        self.data.set_data("y_bar", [0, max(self.data.get_data("imy"))])
+        self.data.set_data("yp_mark", 2*[self.y+2*px*m02**.5])
+        self.data.set_data("ym_mark", 2*[self.y-2*px*m02**.5])
+        self.data.set_data("y_bar", [0, m00/(2*np.pi*m02)**.5])
+
+        self.data.set_data("a0_mark", 2*[0])
+        self.data.set_data("ap_mark", 2*[self.a/2])
+        self.data.set_data("am_mark", 2*[-self.a/2])
+        self.data.set_data("a_bar", [0, m00/(np.pi**.5*wa/2/2**.5)])
+        self.data.set_data("b0_mark", 2*[0])
+        self.data.set_data("bp_mark", 2*[self.b/2])
+        self.data.set_data("bm_mark", 2*[-self.b/2])
+        self.data.set_data("b_bar", [0, m00/(np.pi**.5*wb/2/2**.5)])
+
 
     @on_trait_change("active")
     def _start_me(self, value):
@@ -388,23 +414,34 @@ class Bullseye(HasTraits):
     traits_view = View(HGroup(
         VGroup(
             VGroup(
-                Item("object.camera.x", label="Centroid X", format_str="%g"),
-                Item("object.camera.y", label="Centroid Y", format_str="%g"),
-                Item("object.camera.t", label="Angle", format_str="%g"),
-                Item("object.camera.a", label="Major (4w)", format_str="%g"),
-                Item("object.camera.b", label="Minor (4w)", format_str="%g"),
-                Item("object.camera.d", label="Mean (4w)", format_str="%g"),
-                Item("object.camera.e", label="Ellipticity", format_str="%g"),
+                Item("object.camera.x", label="Centroid X",
+                    format_str=u"%g µm"),
+                Item("object.camera.y", label="Centroid Y",
+                    format_str=u"%g µm"),
+                Item("object.camera.t", label="Rotation",
+                    format_str=u"%g°"),
+                # widths are full width at 1/e^2 intensity
+                Item("object.camera.a", label="Major width",
+                    format_str=u"%g µm"),
+                Item("object.camera.b", label="Minor width",
+                    format_str=u"%g µm"),
+                Item("object.camera.d", label="Mean width",
+                    format_str=u"%g µm"),
+                # minor/major
+                Item("object.camera.e", label="Ellipticity",
+                    format_str=u"%g"),
                 style="readonly"),
-            VGroup(HGroup(
+            VGroup(
                 "object.camera.shutter",
-                UItem("object.camera.auto_shutter")),
                 "object.camera.gain",
                 "object.camera.framerate",
-                "object.camera.average"),
+                "object.camera.average",
+                "object.camera.background",
+                ),
             HGroup(
                 "object.camera.active",
-                "object.camera.background",
+                "object.camera.update_image",
+                UItem("object.camera.auto_shutter"),
                 "palette"),
             ),
         VGroup(
@@ -503,9 +540,9 @@ class Bullseye(HasTraits):
                 tooltip_mode=False, font="modern 10"))
 
         self.horiz.plot(("x", "imx"), type="line", color="red")
-        #self.horiz.plot(("x", "gauss_x"), type="line", color="blue")
         self.vert.plot(("y", "imy"), type="line", color="red")
-        #self.vert.plot(("y", "gauss_y"), type="line", color="blue")
+        self.horiz.plot(("x", "gx"), type="line", color="blue")
+        self.vert.plot(("y", "gy"), type="line", color="blue")
 
         self.abplots = HPlotContainer(padding=20,
                 use_backbuffer=True, fill_padding=True,
@@ -536,29 +573,21 @@ class Bullseye(HasTraits):
         self.abplots.add(self.bsum)
         self.asum.plot(("a", "ima"), type="line", color="red")
         self.bsum.plot(("b", "imb"), type="line", color="red")
+        self.asum.plot(("a", "grx"), type="line", color="blue")
+        self.bsum.plot(("b", "gry"), type="line", color="blue")
 
-        return
+        for p in [("ell1_x", "ell1_y"), ("ell3_x", "ell3_y"),
+                ("a_x", "a_y"), ("b_x", "b_y")]:
+            self.screen.plot(p, type="line", color="green", alpha=.5)
 
-        self.screen.plot(("ell2_x", "ell2_y"), type="line",
-                color="white")
-        self.screen.plot(("a_x", "a_y"), type="line",
-                color="white")
-        self.screen.plot(("b_x", "b_y"), type="line",
-                color="white")
+        for r, s in [("x", self.horiz), ("y", self.vert),
+                ("a", self.asum), ("b", self.bsum)]:
+            for p in "0 p m".split():
+                q = ("%s%s_mark" % (r, p), "%s_bar" % r)
+                logging.debug(q)
+                s.plot(q, type="line", color="green")
 
-        self.horiz.plot(("x0_mark", "x_bar"), type="line",
-                color="white")
-        self.horiz.plot(("xp_mark", "x_bar"), type="line",
-                color="white")
-        self.horiz.plot(("xm_mark", "x_bar"), type="line",
-                color="white")
-        self.vert.plot(("y0_mark", "y_bar"), type="line",
-                color="white")
-        self.vert.plot(("yp_mark", "y_bar"), type="line",
-                color="white")
-        self.vert.plot(("ym_mark", "y_bar"), type="line",
-                color="white")
-
+ 
     def __del__(self):
         self.close()
 
@@ -584,8 +613,8 @@ class Bullseye(HasTraits):
 def main():
     logging.basicConfig(level=logging.DEBUG,
         format='%(asctime)s %(levelname)s %(message)s')
-    b = Bullseye("first:")
-    #b = Bullseye("none:")
+    #b = Bullseye("first:")
+    b = Bullseye("none:")
     #b = Bullseye("guid:b09d01009981f9")
     b.configure_traits()
     b.close()
