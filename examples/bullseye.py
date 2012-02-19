@@ -340,7 +340,7 @@ class Camera(HasTraits):
         self.data.set_data("ell1_y", self.y+.5*ey)
         self.data.set_data("ell3_x", self.x+3/2.*ex)
         self.data.set_data("ell3_y", self.y+3/2.*ey)
-        k = np.array([-3/2., 3/2])
+        k = np.array([-3/2., 3/2.])
         self.data.set_data("a_x", self.a*k*np.cos(t)+self.x)
         self.data.set_data("a_y", self.a*k*np.sin(t)+self.y)
         self.data.set_data("b_x", -self.b*k*np.sin(t)+self.x)
@@ -418,21 +418,21 @@ class Bullseye(HasTraits):
         VGroup(
             VGroup(
                 Item("object.camera.x", label="Centroid X",
-                    format_str=u"%g µm"),
+                    format_str=u"%.4g µm"),
                 Item("object.camera.y", label="Centroid Y",
-                    format_str=u"%g µm"),
+                    format_str=u"%.4g µm"),
                 Item("object.camera.t", label="Rotation",
-                    format_str=u"%g°"),
+                    format_str=u"%.4g°"),
                 # widths are full width at 1/e^2 intensity
                 Item("object.camera.a", label="Major width",
-                    format_str=u"%g µm"),
+                    format_str=u"%.4g µm"),
                 Item("object.camera.b", label="Minor width",
-                    format_str=u"%g µm"),
+                    format_str=u"%.4g µm"),
                 Item("object.camera.d", label="Mean width",
-                    format_str=u"%g µm"),
+                    format_str=u"%.4g µm"),
                 # minor/major
                 Item("object.camera.e", label="Ellipticity",
-                    format_str=u"%g"),
+                    format_str=u"%.4g"),
                 style="readonly"),
             VGroup(
                 "object.camera.shutter",
@@ -501,7 +501,7 @@ class Bullseye(HasTraits):
         self.vert.value_axis.visible = False
         self.vert.index_grid.visible = True
         self.vert.value_grid.visible = False
-        self.vert.value_range = self.horiz.value_range
+        #self.vert.value_range = self.horiz.value_range
         self.vert.index_range = self.screen.value_range
 
         self.mini = VPlotContainer(
