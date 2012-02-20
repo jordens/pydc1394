@@ -18,7 +18,7 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from traits.trait_base import ETSConfig
-ETSConfig.toolkit = "wx"
+ETSConfig.toolkit = "qt4"
 # fix window color on unity
 if ETSConfig.toolkit == "wx":
     from traitsui.wx import constants
@@ -512,7 +512,8 @@ class Bullseye(HasTraits):
         self.horiz = Plot(self.data,
                 resizable="h", padding=0, height=100,
                 bgcolor="lightgray", border_visible=False)
-        self.horiz.value_mapper.range.low_setting = -.1
+        self.horiz.value_mapper.range.low_setting = \
+                -.1*self.camera.maxval
         self.horiz.index_range = self.screen.index_range
         self.vert = Plot(self.data, orientation="v",
                 resizable="v", padding=0, width=100,
@@ -522,7 +523,8 @@ class Bullseye(HasTraits):
             p.value_axis.visible = False
             p.index_grid.visible = True
             p.value_grid.visible = False
-        self.vert.value_mapper.range.low_setting = -.1
+        self.vert.value_mapper.range.low_setting = \
+                -.1*self.camera.maxval
         self.vert.index_range = self.screen.value_range
 
         #self.vert.value_range = self.horiz.value_range
