@@ -1,8 +1,21 @@
 #!/usr/bin/python
 # -*- coding: utf8 -*-
-# (c) Robert Jordens <jordens@debian.org>
 #
-# GPL-2
+#   bullseye - ccd laser beam profilers (pydc1394 + chaco)
+#   Copyright (C) 2012 Robert Jordens <jordens@phys.ethz.ch>
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from traits.trait_base import ETSConfig
 ETSConfig.toolkit = "qt4"
@@ -34,9 +47,7 @@ from angle_sum import angle_sum
 import urlparse, logging, time
 from contextlib import closing
 import numpy as np
-# from scipy import stats
 from threading import Thread
-
 
 
 class Camera(HasTraits):
@@ -219,22 +230,17 @@ class Camera(HasTraits):
                 name = time.strftime(self.save_format)
                 np.savez_compressed(name, im)
                 logging.debug("saved as %s" % name)
-            im = im.astype(np.int) #/float(self.maxval)
-            #logging.debug("im shape, ptp %s %s" % (im.shape, im.ptp()))
+            im = im.astype(np.int)
         else:
             im = self.get_dummy()
         if self.average > 1 and self.im.shape == im.shape:
+            # TODO: rounding errors since int
             self.im = (self.im*self.average + im)/(self.average + 1)
         else:
             self.im = im
 
     def gauss_process(self, im, background=0):
         if background > 0:
-            #imr = im.ravel()
-            #low = stats.scoreatpercentile(imr, background)
-            #bg = imr[np.where(imr <= low)]
-            #bg_mean = bg.mean()
-            #im -= bg_mean
             black = np.percentile(im, background)
             im -= black
         else:
@@ -274,7 +280,8 @@ class Camera(HasTraits):
         self.m20 = m20
         self.m02 = m02
         self.black = black
-        self.peak = m00/(2*np.pi*(m02*m20-m11**2)**.5)/self.maxval
+        self.peak = (m00/(2*np.pi*(m02*m20-m11**2)**.5)+black
+                )/self.maxval
         self.x = (m10+l-self.width/2)*px
         self.y = (m01+b-self.height/2)*px
         self.t = np.rad2deg(wt)
@@ -300,11 +307,18 @@ class Camera(HasTraits):
             u"black: %.4g\n"
             u"peak: %.4g\n"
             ) % fields
+        
+        imx = im.sum(axis=0)
+        imy = im.sum(axis=1)
+        x = np.arange(l, l+w)-self.width/2
+        y = np.arange(b, b+h)-self.height/2
+        gx = m00/(2*np.pi*m20)**.5*np.exp(-(x-self.x/px)**2/m20/2)
+        gy = m00/(2*np.pi*m02)**.5*np.exp(-(y-self.y/px)**2/m02/2)
 
-        ima = angle_sum(im, wt, binsize=1)
-        imb = angle_sum(im, wt+np.pi/2, binsize=1)
         #TODO: fix half pixel offset
         xc, yc = m10-im.shape[1]/2., m01-im.shape[0]/2.
+        ima = angle_sum(im, wt, binsize=1)
+        imb = angle_sum(im, wt+np.pi/2, binsize=1)
         xcr = np.cos(wt)*xc+np.sin(wt)*yc+ima.shape[0]/2.
         ycr = -np.sin(wt)*xc+np.cos(wt)*yc+imb.shape[0]/2.
         rad = 3/2.
@@ -312,24 +326,18 @@ class Camera(HasTraits):
                   int(min(ima.shape[0], xcr+rad*wa))]
         imb = imb[int(max(0, ycr-rad*wb)):
                   int(min(imb.shape[0], ycr+rad*wb))]
-        xa = np.arange(ima.shape[0]) - (min(0, rad*wa-xcr)+xcr)
-        yb = np.arange(imb.shape[0]) - (min(0, rad*wb-ycr)+ycr)
-
-        x = np.arange(l, l+w)-self.width/2
-        y = np.arange(b, b+h)-self.height/2
-
-        grx = m00/(np.pi**.5*wa/2/2**.5)*np.exp(-(2**.5*2*xa/wa)**2)
-        gry = m00/(np.pi**.5*wb/2/2**.5)*np.exp(-(2**.5*2*yb/wb)**2)
-        gx = m00/(2*np.pi*m20)**.5*np.exp(-(x-self.x/px)**2/m20/2)
-        gy = m00/(2*np.pi*m02)**.5*np.exp(-(y-self.y/px)**2/m02/2)
+        a = np.arange(ima.shape[0]) - min(xcr, rad*wa)
+        b = np.arange(imb.shape[0]) - min(ycr, rad*wb)
+        ga = m00/(np.pi**.5*wa/2/2**.5)*np.exp(-(2**.5*2*a/wa)**2)
+        gb = m00/(np.pi**.5*wb/2/2**.5)*np.exp(-(2**.5*2*b/wb)**2)
 
         upd = dict((
             ("img", im),
-            ("imx", im.sum(axis=0)), ("imy", im.sum(axis=1)),
-            ("ima", ima), ("imb", imb),
-            ("a", xa*px), ("b", yb*px),
+            ("imx", imx), ("imy", imy),
             ("gx", gx), ("gy", gy),
-            ("grx", grx), ("gry", gry),
+            ("a", a*px), ("b", b*px),
+            ("ima", ima), ("imb", imb),
+            ("ga", ga), ("gb", gb),
             ))
         self.data.arrays.update(upd)
         self.data.data_changed = {"changed": upd.keys()}
@@ -579,8 +587,8 @@ class Bullseye(HasTraits):
         self.vert.plot(("y", "gy"), type="line", color="blue")
         self.asum.plot(("a", "ima"), type="line", color="red")
         self.bsum.plot(("b", "imb"), type="line", color="red")
-        self.asum.plot(("a", "grx"), type="line", color="blue")
-        self.bsum.plot(("b", "gry"), type="line", color="blue")
+        self.asum.plot(("a", "ga"), type="line", color="blue")
+        self.bsum.plot(("b", "gb"), type="line", color="blue")
 
         for p in [("ell1_x", "ell1_y"), ("ell3_x", "ell3_y"),
                 ("a_x", "a_y"), ("b_x", "b_y")]:
