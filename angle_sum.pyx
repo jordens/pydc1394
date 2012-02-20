@@ -21,6 +21,8 @@ cimport cython
 
 dtype = np.int
 ctypedef np.int_t dtype_t 
+outdtype = np.int
+ctypedef np.int_t outdtype_t 
 
 @cython.boundscheck(False)
 def angle_sum(np.ndarray[dtype_t, ndim=2] m not None,
@@ -123,7 +125,7 @@ def angle_sum(np.ndarray[dtype_t, ndim=2] m not None,
     """
     cdef np.ndarray[np.int_t, ndim=2] i, j
     cdef np.ndarray[np.float64_t, ndim=2] k
-    cdef np.ndarray[dtype_t, ndim=1] out
+    cdef np.ndarray[outdtype_t, ndim=1] out
     cdef int km, kp
     cdef unsigned int im = m.shape[0]
     cdef unsigned int jm = m.shape[1]
@@ -145,7 +147,7 @@ def angle_sum(np.ndarray[dtype_t, ndim=2] m not None,
     kp = int(k[cx, cy].max())
     #assert k.min() == km
     #assert k.max() == kp
-    out = np.zeros([kp-km+1,], dtype=dtype)
+    out = np.zeros([kp-km+1,], dtype=outdtype)
     for ii in range(im):
         for jj in range(jm):
             out[<unsigned int>k[ii, jj]-km] += m[ii, jj]
