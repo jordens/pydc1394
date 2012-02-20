@@ -101,14 +101,13 @@ class Camera(HasTraits):
             self.setup()
 
     def initialize(self):
-        self.update_roi()
         self.start()
         self.capture()
         self.process()
         self.stop()
 
     def setup(self):
-        self.mode = self.cam.modes_dict["FORMAT7_0"]
+        self.mode = self.cam.modes_dict["1280x960_Y8"]
         self.cam.mode = self.mode
         self.cam.setup(framerate=self.framerate,
                 gain=self.gain, shutter=self.shutter)
@@ -173,34 +172,17 @@ class Camera(HasTraits):
         self.cam.framerate.absolute = fr
         return im
 
-    def update_roi(self):
+    def bounds(self):
         l, b, w, h = self.roi
         l = int(min(self.width, max(0, l+self.width/2)))
         b = int(min(self.height, max(0, b+self.height/2)))
         w = int(min(self.width-l, max(128, w)))
         h = int(min(self.height-b, max(128, h)))
-        if self.cam is not None:
-            (w, h), (l, b), _, _ = self.mode.setup(
-                    (w, h), (l, b), "Y8")
-            logging.debug("new roi %s" % (self.mode.roi,))
-        self.bounds = l, b, w, h
-        logging.debug("new bounds %s" % (self.bounds,))
-
-        px = self.pixelsize
-        x = np.arange(l-self.width/2, l+w-self.width/2)*px
-        y = np.arange(b-self.height/2, b+h-self.height/2)*px
-        xbounds = (np.r_[x, x[-1]+px]-.5*px)
-        ybounds = (np.r_[y, y[-1]+px]-.5*px)
-        upd = dict((("x", x), ("y", y),
-            ("xbounds", xbounds), ("ybounds", ybounds)))
-        self.data.arrays.update(upd)
-        self.data.data_changed = {"changed": upd.keys()}
-        if self.grid is not None:
-            self.grid.set_data(xbounds, ybounds)
+        return l, b, w, h
 
     def get_dummy(self):
         px = self.pixelsize
-        l, b, w, h = self.bounds
+        l, b, w, h = self.bounds()
         x, y = 600., 700.
         a, c = 250/4., 150/4.
         m = .8
@@ -223,7 +205,8 @@ class Camera(HasTraits):
                 name = time.strftime(self.save_format)
                 np.savez_compressed(name, im)
                 logging.debug("saved as %s" % name)
-            im = im.astype(np.int)
+            l, b, w, h = self.bounds()
+            im = im[b:b+h, l:l+w].astype(np.int)
         else:
             im = self.get_dummy()
         if self.average > 1 and self.im.shape == im.shape:
@@ -275,7 +258,7 @@ class Camera(HasTraits):
         m10 += lc
         m01 += bc
         px = self.pixelsize
-        l, b, w, h = self.bounds
+        l, b, w, h = self.bounds()
 
         self.m00 = m00
         self.m20 = m20
@@ -292,11 +275,13 @@ class Camera(HasTraits):
         self.e = wb/wa
 
         self.update_text()
-        
-        imx = im.sum(axis=0)
-        imy = im.sum(axis=1)
+
         x = np.arange(l, l+w)-self.width/2
         y = np.arange(b, b+h)-self.height/2
+        xbounds = (np.r_[x, x[-1]+1]-.5)*px
+        ybounds = (np.r_[y, y[-1]+1]-.5)*px
+        imx = im.sum(axis=0)
+        imy = im.sum(axis=1)
         gx = m00/(2*np.pi*m20)**.5*np.exp(-(x-self.x/px)**2/m20/2)
         gy = m00/(2*np.pi*m02)**.5*np.exp(-(y-self.y/px)**2/m02/2)
 
@@ -318,6 +303,8 @@ class Camera(HasTraits):
 
         upd = dict((
             ("img", im),
+            ("xbounds", xbounds), ("ybounds", ybounds),
+            ("x", x*px), ("y", y*px),
             ("imx", imx), ("imy", imy),
             ("gx", gx), ("gy", gy),
             ("a", a*px), ("b", b*px),
@@ -327,6 +314,9 @@ class Camera(HasTraits):
         upd.update(self.update_markers())
         self.data.arrays.update(upd)
         self.data.data_changed = {"changed": upd.keys()}
+        if self.grid is not None:
+            self.grid.set_data(xbounds, ybounds)
+
 
     def update_markers(self):
         px = self.pixelsize
@@ -412,7 +402,6 @@ class Camera(HasTraits):
                     "capture thread terminated")
 
     def run(self):
-        self.update_roi()
         logging.debug("start")
         self.start()
         while self.active:
