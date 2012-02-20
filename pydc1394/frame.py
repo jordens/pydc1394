@@ -107,6 +107,11 @@ class Frame(ndarray):
             self._frame = None
             self._cam = None
 
+    # from contextlib iport closing
+    # with closing(camera.dequeue()) as im:
+    #   do stuff with im
+    close = enqueue
+
     def __del__(self):
         try:
             self.enqueue()

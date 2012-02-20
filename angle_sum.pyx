@@ -19,8 +19,8 @@ import numpy as np
 cimport numpy as np
 cimport cython
 
-dtype = np.float64
-ctypedef np.float64_t dtype_t 
+dtype = np.int
+ctypedef np.int_t dtype_t 
 
 @cython.boundscheck(False)
 def angle_sum(np.ndarray[dtype_t, ndim=2] m not None,

@@ -32,6 +32,7 @@ from pydc1394.camera2 import Camera as DC1394Camera
 from angle_sum import angle_sum
 
 import urlparse, logging, time
+from contextlib import closing
 import numpy as np
 # from scipy import stats
 from threading import Thread
@@ -41,17 +42,19 @@ from threading import Thread
 class Camera(HasTraits):
     cam = Instance(DC1394Camera)
 
-    shutter = Range(5e-6, 100e-3, 1e-3)
-    gain = Range(0., 24., 0.)
+    min_shutter = 5e-6
+    max_shutter = 100e-3
+    shutter = Range(min_shutter, max_shutter, 1e-3)
+    gain = Range(-6., 24., 0.)
     framerate = Range(1, 10, 2)
     average = Range(1, 10, 1)
 
-    auto_shutter = Button("Auto")
-    auto_shutter_requested = Bool(False)
+    auto_shutter = Bool(False)
 
     pixelsize = Float(3.75)
     height = Int(960)
     width = Int(1280)
+    maxval = Int((1<<8)-1)
 
     thread = Instance(Thread)
     active = Bool(False)
@@ -126,40 +129,39 @@ class Camera(HasTraits):
     def _do_gain(self, val):
         self.cam.gain.absolute = val
 
-    @on_trait_change("auto_shutter")
-    def _do_auto_shutter(self):
-        self.auto_shutter_requested = True
-
-    def auto(self):
+    def auto(self, im, percentile=99, maxiter=10,
+            minval=.25, maxval=.75, adjustment_factor=.6):
+        p = np.percentile(im, 99)/float(self.maxval)
+        if not ((p < .25 and self.shutter < self.max_shutter) or
+                (p > .75 and self.shutter > self.min_shutter)):
+            return im
         fr = self.cam.framerate.absolute
         self.cam.framerate.absolute = max(
                 self.cam.framerate.absolute_range)
-        for i in range(20):
-            im_ = self.cam.dequeue()
-            im = np.array(im_).astype("float")/(1<<16)
-            im_.enqueue()
-            # undo gamma
-            p = np.percentile(im, 99)
-            
-            try:
-                if p > .75:
-                    self.shutter *= .6
+        while True:
+            with closing(self.cam.dequeue()) as im_:
+                p = np.percentile(im_, percentile)/float(self.maxval)
+                s = "="
+                if p > maxval:
+                    self.shutter = max(self.min_shutter,
+                            self.shutter*adjustment_factor)
                     s = "-"
-                elif p < .25:
-                    self.shutter /= .6
+                elif p < minval:
+                    self.shutter = min(self.max_shutter,
+                            self.shutter/adjustment_factor)
                     s = "+"
-                else:
-                    s = "="
-            except TraitError:
-                break
-            logging.debug("1%%>%g, t%s: %g" % (p, s, self.shutter))
+                logging.debug("1%%>%g, t%s: %g" % (p, s, self.shutter))
+                if s == "=" or self.shutter in (self.min_shutter,
+                        self.max_shutter) or maxiter == 0:
+                    im = np.array(im_).copy()
+                    break
             # ensure all frames with old settings are gone
             self.cam.flush()
             self.cam.dequeue().enqueue()
-            if s == "=":
-                break
-        # revert framerate and active state
+            maxiter -= 1
+        # revert framerate
         self.cam.framerate.absolute = fr
+        return im
 
     def update_roi(self):
         l, b, w, h = self.roi
@@ -169,7 +171,7 @@ class Camera(HasTraits):
         h = int(min(self.height-b, max(128, h)))
         if self.cam is not None:
             (w, h), (l, b), _, _ = self.mode.setup(
-                    (w, h), (l, b), "Y16")
+                    (w, h), (l, b), "Y8")
             logging.debug("new roi %s" % (self.mode.roi,))
         self.bounds = l, b, w, h
         logging.debug("new bounds %s" % (self.bounds,))
@@ -199,30 +201,30 @@ class Camera(HasTraits):
         t = np.deg2rad(15)
         b = 150/4.
         a = 250/4.
-        h = .8
+        h = .8*self.maxval
         x, y = np.cos(t)*x+np.sin(t)*y, -np.sin(t)*x+np.cos(t)*y
         im = h*np.exp(((x/a)**2+(y/b)**2)/-2.)
         im *= 1+np.random.randn(*im.shape)*.2
         #im += np.random.randn(im.shape)*30
         #logging.debug("im shape %s" % (im.shape,))
-        return im
+        return im.astype(np.int)
 
     def capture(self):
         if self.cam:
-            im_ = self.cam.dequeue()
-            im = np.array(im_).copy()
-            im_.enqueue()
+            with closing(self.cam.dequeue()) as im_:
+                im = np.array(im_).copy()
+            if self.auto_shutter:
+                im = self.auto(im)
             if self.save_format:
                 name = time.strftime(self.save_format)
                 np.savez_compressed(name, im)
                 logging.debug("saved as %s" % name)
-            im = im.astype("float")/float(1<<16)
-            # undo gamma
+            im = im.astype(np.int) #/float(self.maxval)
             #logging.debug("im shape, ptp %s %s" % (im.shape, im.ptp()))
         else:
             im = self.get_dummy()
         if self.average > 1 and self.im.shape == im.shape:
-            self.im = self.im*(1-1./self.average) + im/self.average
+            self.im = (self.im*self.average + im)/(self.average + 1)
         else:
             self.im = im
 
@@ -236,9 +238,9 @@ class Camera(HasTraits):
             black = np.percentile(im, background)
             im -= black
         else:
-            black = 0.
+            black = 0
         y, x = np.ogrid[:im.shape[0], :im.shape[1]]
-        m00 = im.sum() or 1.
+        m00 = float(im.sum()) or 1.
         m10, m01 = (im*x).sum()/m00, (im*y).sum()/m00
         x -= m10
         y -= m01
@@ -272,7 +274,7 @@ class Camera(HasTraits):
         self.m20 = m20
         self.m02 = m02
         self.black = black
-        self.peak = m00/(2*np.pi*(m02*m20-m11**2)**.5)
+        self.peak = m00/(2*np.pi*(m02*m20-m11**2)**.5)/self.maxval
         self.x = (m10+l-self.width/2)*px
         self.y = (m01+b-self.height/2)*px
         self.t = np.rad2deg(wt)
@@ -286,7 +288,7 @@ class Camera(HasTraits):
                 self.t, self.e,
                 self.black, self.peak)
 
-        logging.info(("% 8.4g,"*len(fields)) % fields)
+        logging.info(("% 5.4g,"*len(fields)) % fields)
 
         self.text = (
             u"centroid x: %.4g µm\n"
@@ -371,7 +373,6 @@ class Camera(HasTraits):
         self.data.set_data("b_bar",
                 [0, self.m00/(np.pi**.5*self.b/px/2/2**.5)])
 
-
     @on_trait_change("active")
     def _start_me(self, value):
         if value:
@@ -405,9 +406,6 @@ class Camera(HasTraits):
         logging.debug("start")
         self.start()
         while self.active:
-            if self.auto_shutter_requested:
-                self.auto()
-                self.auto_shutter_requested = False
             self.capture()
             self.process()
             #logging.debug("image processed")
@@ -466,7 +464,7 @@ class Bullseye(HasTraits):
             "object.camera.background",
         ), HGroup(
             "object.camera.active",
-            UItem("object.camera.auto_shutter"),
+            "object.camera.auto_shutter",
             UItem("palette"),
             "invert"
         ), UItem("abplots", editor=ComponentEditor(),
@@ -611,7 +609,10 @@ class Bullseye(HasTraits):
     @on_trait_change("invert")
     def set_invert(self):
         p = self.screenplot
-        a, b = self.invert and (1, 0) or (0, 1)
+        if self.invert:
+            a, b = self.camera.maxval, 0
+        else:
+            a, b = 0, self.camera.maxval
         p.color_mapper.range.low_setting = a
         p.color_mapper.range.high_setting = b
 
