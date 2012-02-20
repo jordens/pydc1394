@@ -202,23 +202,17 @@ class Camera(HasTraits):
     def get_dummy(self):
         px = self.pixelsize
         l, b, w, h = self.bounds
-        y, x = np.mgrid[b:b+h, l:l+w]
-        x -= self.width/2
-        y -= self.height/2
-        x *= px
-        y *= px
-        x -= 600
-        y -= 700
-        t = np.deg2rad(15)
-        b = 150/4.
-        a = 250/4.
-        h = .8*self.maxval
-        x, y = np.cos(t)*x+np.sin(t)*y, -np.sin(t)*x+np.cos(t)*y
-        im = h*np.exp(((x/a)**2+(y/b)**2)/-2.)
+        x, y = 600., 700.
+        a, c = 250/4., 150/4.
+        m = .8
+        t = np.deg2rad(15.)
+        j, i = np.ogrid[b:b+h, l:l+w]
+        i, j = ((i-self.width/2)*px-x)/a, ((j-self.height/2)*px-y)/c
+        i, j = np.cos(t)*i+np.sin(t)*j, -np.sin(t)*i+np.cos(t)*j
+        im = self.maxval*m*np.exp((i**2+j**2)/-2)
         im *= 1+np.random.randn(*im.shape)*.2
         #im += np.random.randn(im.shape)*30
-        #logging.debug("im shape %s" % (im.shape,))
-        return im.astype(np.int)
+        return (im+.5).astype(np.int)
 
     def capture(self):
         if self.cam:
@@ -238,18 +232,12 @@ class Camera(HasTraits):
             self.im = (self.im*self.average + im)/(self.average + 1)
         else:
             self.im = im
-
-    def gauss_process(self, im, background=0):
-        if background > 0:
-            black = np.percentile(im, background)
-            im -= black
-        else:
-            black = 0
+  
+    def gauss_process(self, im):
         y, x = np.ogrid[:im.shape[0], :im.shape[1]]
         m00 = float(im.sum()) or 1.
         m10, m01 = (im*x).sum()/m00, (im*y).sum()/m00
-        x -= m10
-        y -= m01
+        x, y = x-m10, y-m01 # makes them floats
         m20, m02 = (im*x**2).sum()/m00, (im*y**2).sum()/m00
         m11 = (im*x*y).sum()/m00
         g = np.sign(m20-m02)
@@ -264,14 +252,20 @@ class Camera(HasTraits):
             t = .5*np.arctan2(2*m11, m20-m02)
         e = b/a
         ab = 2*2**.5*(m20+m02)**.5
-        return black, m00, m10, m01, m20, m02, m11, a, b, t, e, ab
+        return m00, m10, m01, m20, m02, m11, a, b, t, e, ab
 
     def process(self):
         im = self.im
 
+        if self.background > 0:
+            black = np.percentile(im, self.background)
+            im -= black
+        else:
+            black = 0
+
         #TODO: repeat this a few times and crop the data
-        black, m00, m10, m01, m20, m02, m11, wa, wb, wt, we, wab = \
-                self.gauss_process(im, background=self.background)
+        m00, m10, m01, m20, m02, m11, wa, wb, wt, we, wab = \
+                self.gauss_process(im)
 
         px = self.pixelsize
         l, b, w, h = self.bounds
