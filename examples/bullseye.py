@@ -69,7 +69,8 @@ class Camera(HasTraits):
     thread = Instance(Thread)
     active = Bool(False)
 
-    crops = Int(2)
+    crops = Int(2) # crop iterations
+    rad = Float(3/2.) # crop radius
 
     background = Range(0, 50, 5)
 
@@ -245,14 +246,16 @@ class Camera(HasTraits):
         lc, bc = 0, 0
         for i in range(self.crops):
             m00, m10, m01, m20, m02, m11 = self.moments(imc)
+            w20 = self.rad*4*m20**.5
+            w02 = self.rad*4*m02**.5
             if i < self.crops-1:
-                lc += int(max(0, m10-3*2*2**.5*m20**.5))
-                bc += int(max(0, m01-3*2*2**.5*m02**.5))
+                lc += int(max(0, m10-w20))
+                bc += int(max(0, m01-w02))
                 imc = imc[
-                      int(max(0, m01-3*2*2**.5*m02**.5)):
-                      int(min(imc.shape[0], m01+3*2*2**.5*m02**.5)),
-                      int(max(0, m10-3*2*2**.5*m20**.5)):
-                      int(min(imc.shape[1], m10+3*2*2**.5*m20**.5))]
+                      int(max(0, m01-w02)):
+                      int(min(imc.shape[0], m01+w02)),
+                      int(max(0, m10-w20)):
+                      int(min(imc.shape[1], m10+w20))]
         wa, wb, wt = self.gauss_axes(m00, m10, m01, m20, m02, m11)
 
         m10 += lc
@@ -282,8 +285,8 @@ class Camera(HasTraits):
         ybounds = (np.r_[y, y[-1]+1]-.5)*px
         imx = im.sum(axis=0)
         imy = im.sum(axis=1)
-        gx = m00/(2*np.pi*m20)**.5*np.exp(-(x-self.x/px)**2/m20/2)
-        gy = m00/(2*np.pi*m02)**.5*np.exp(-(y-self.y/px)**2/m02/2)
+        gx = (m00/(2*np.pi*m20)**.5)*np.exp(-(x-self.x/px)**2/(m20*2))
+        gy = (m00/(2*np.pi*m02)**.5)*np.exp(-(y-self.y/px)**2/(m02*2))
 
         #TODO: fix half pixel offset
         xc, yc = m10-im.shape[1]/2., m01-im.shape[0]/2.
@@ -291,15 +294,14 @@ class Camera(HasTraits):
         imb = angle_sum(im, wt+np.pi/2, binsize=1)
         xcr = np.cos(wt)*xc+np.sin(wt)*yc+ima.shape[0]/2.
         ycr = -np.sin(wt)*xc+np.cos(wt)*yc+imb.shape[0]/2.
-        rad = 3/2.
-        ima = ima[int(max(0, xcr-rad*wa)):
-                  int(min(ima.shape[0], xcr+rad*wa))]
-        imb = imb[int(max(0, ycr-rad*wb)):
-                  int(min(imb.shape[0], ycr+rad*wb))]
-        a = np.arange(ima.shape[0]) - min(xcr, rad*wa)
-        b = np.arange(imb.shape[0]) - min(ycr, rad*wb)
-        ga = m00/(np.pi**.5*wa/2/2**.5)*np.exp(-(2**.5*2*a/wa)**2)
-        gb = m00/(np.pi**.5*wb/2/2**.5)*np.exp(-(2**.5*2*b/wb)**2)
+        ima = ima[int(max(0, xcr-self.rad*wa)):
+                  int(min(ima.shape[0], xcr+self.rad*wa))]
+        imb = imb[int(max(0, ycr-self.rad*wb)):
+                  int(min(imb.shape[0], ycr+self.rad*wb))]
+        a = np.arange(ima.shape[0]) - min(xcr, self.rad*wa)
+        b = np.arange(imb.shape[0]) - min(ycr, self.rad*wb)
+        ga = (m00/(np.pi**.5*wa/2/2**.5))*np.exp(-a**2*(2**.5*2/wa)**2)
+        gb = (m00/(np.pi**.5*wb/2/2**.5))*np.exp(-b**2*(2**.5*2/wb)**2)
 
         upd = dict((
             ("img", im),
