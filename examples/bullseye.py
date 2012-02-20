@@ -232,7 +232,7 @@ class Camera(HasTraits):
         else:
             self.im = im
   
-    def gauss_process(self, im):
+    def moments(self, im):
         y, x = np.ogrid[:im.shape[0], :im.shape[1]]
         imx, imy = im.sum(axis=0)[None, :], im.sum(axis=1)[:, None]
         m00 = float(imx.sum()) or 1.
@@ -240,13 +240,14 @@ class Camera(HasTraits):
         x, y = x-m10, y-m01
         m20, m02 = (imx*x**2).sum()/m00, (imy*y**2).sum()/m00
         m11 = (im*x*y).sum()/m00
+        return m00, m10, m01, m20, m02, m11
+
+    def gauss_axes(self, m00, m10, m01, m20, m02, m11):
         q = ((m20-m02)**2+4*m11**2)**.5
         a = 2*2**.5*((m20+m02)+q)**.5
         b = 2*2**.5*((m20+m02)-q)**.5
-        ab = 2*2**.5*(m20+m02)**.5
         t = .5*np.arctan2(2*m11, m20-m02)
-        e = b/a
-        return m00, m10, m01, m20, m02, m11, a, b, t, e, ab
+        return a, b, t
 
     def process(self):
         im = self.im
@@ -260,8 +261,7 @@ class Camera(HasTraits):
         imc = im
         lc, bc = 0, 0
         for i in range(self.crops):
-            m00, m10, m01, m20, m02, m11, wa, wb, wt, we, wab = \
-                    self.gauss_process(imc)
+            m00, m10, m01, m20, m02, m11 = self.moments(imc)
             if i < self.crops-1:
                 lc += int(max(0, m10-3*2*2**.5*m20**.5))
                 bc += int(max(0, m01-3*2*2**.5*m02**.5))
@@ -270,6 +270,8 @@ class Camera(HasTraits):
                       int(min(imc.shape[0], m01+3*2*2**.5*m02**.5)),
                       int(max(0, m10-3*2*2**.5*m20**.5)):
                       int(min(imc.shape[1], m10+3*2*2**.5*m20**.5))]
+        wa, wb, wt = self.gauss_axes(m00, m10, m01, m20, m02, m11)
+
         m10 += lc
         m01 += bc
         px = self.pixelsize
@@ -286,8 +288,8 @@ class Camera(HasTraits):
         self.t = np.rad2deg(wt)
         self.a = wa*px
         self.b = wb*px
-        self.d = wab*px
-        self.e = we
+        self.d = ((self.a**2+self.b**2)/2)**.5
+        self.e = wb/wa
 
         self.update_text()
         
@@ -636,10 +638,6 @@ class Bullseye(HasTraits):
     # value_range seems to be updated after index_range, take this
     @on_trait_change("screen.value_range.updated")
     def set_range(self):
-        l, r = self.screen.index_range.low, self.screen.index_range.high
-        b, t = self.screen.value_range.low, self.screen.value_range.high
-        px = self.camera.pixelsize
-        self.camera.roi = [l/px, b/px, (r-l)/px, (t-b)/px]
         if self.gridm is not None:
             #enforce data/screen aspect ratio 1
             sl, sr, sb, st = self.gridm.screen_bounds
@@ -651,6 +649,10 @@ class Bullseye(HasTraits):
             if dsdy:
                 dr_new = dl+(sr-sl)/dsdy
                 self.gridm.range.x_range.high_setting = dr_new
+        l, r = self.screen.index_range.low, self.screen.index_range.high
+        b, t = self.screen.value_range.low, self.screen.value_range.high
+        px = self.camera.pixelsize
+        self.camera.roi = [l/px, b/px, (r-l)/px, (t-b)/px]
 
     @on_trait_change("camera.text")
     def set_text(self):
