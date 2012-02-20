@@ -480,7 +480,7 @@ class Bullseye(HasTraits):
         ),
     ), UItem("plots", editor=ComponentEditor(),
             width=600),
-    #layout="split",
+    layout="split",
     ), resizable=True, title=u"Bullseye ― Beam Profiler", width=1000)
 
     def __init__(self, uri="first:", **k):
