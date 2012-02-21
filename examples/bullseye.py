@@ -177,8 +177,8 @@ class Camera(HasTraits):
         l, b, w, h = self.roi
         l = int(min(self.width, max(0, l+self.width/2)))
         b = int(min(self.height, max(0, b+self.height/2)))
-        w = int(min(self.width-l, max(128, w)))
-        h = int(min(self.height-b, max(128, h)))
+        w = int(min(self.width-l, max(8, w)))
+        h = int(min(self.height-b, max(8, h)))
         return l, b, w, h
 
     def get_dummy(self):
