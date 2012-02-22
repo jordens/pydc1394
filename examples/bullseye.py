@@ -66,6 +66,7 @@ class Camera(HasTraits):
     average = Range(1, 20, 1)
 
     roi = ListFloat([-1280/2, -960/2, 1280, 960], minlen=4, maxlen=4)
+    follow = Bool(False)
 
     thread = Instance(Thread)
     active = Bool(False)
@@ -379,6 +380,13 @@ class Camera(HasTraits):
             u"peak: %.4g\n"
             ) % fields
 
+    def do_follow(self):
+        px = self.pixelsize
+        r = self.rad
+        x, y = self.x/px, self.y/px
+        rx, ry = r*4*self.m20**.5, r*4*self.m02**.5
+        self.roi = map(float, [x-rx, y-ry, 2*rx, 2*ry])
+
     @on_trait_change("active")
     def _start_me(self, value):
         if value:
@@ -414,6 +422,8 @@ class Camera(HasTraits):
             self.capture()
             self.process()
             #logging.debug("image processed")
+            if self.follow:
+                self.do_follow()
         logging.debug("stop")
         self.stop()
         self.thread = None
@@ -446,8 +456,8 @@ class Bullseye(HasTraits):
                     format_str=u"%.4g µm"),
                 Item("object.camera.t", label="Rotation",
                     format_str=u"%.4g°"),
-                Item("object.camera.black", label="Black",
-                    format_str=u"%.4g"),
+                #Item("object.camera.black", label="Black",
+                #    format_str=u"%.4g"),
             ), VGroup(
                 Item("object.camera.y", label="Centroid Y",
                     format_str=u"%.4g µm"),
@@ -458,8 +468,9 @@ class Bullseye(HasTraits):
                 # minor/major
                 Item("object.camera.e", label="Ellipticity",
                     format_str=u"%.4g"),
-                Item("object.camera.peak", label="Peak",
-                    format_str=u"%.4g")),
+                #Item("object.camera.peak", label="Peak",
+                #    format_str=u"%.4g")
+            ),
             style="readonly",
         ), VGroup(
             "object.camera.shutter",
@@ -470,8 +481,10 @@ class Bullseye(HasTraits):
         ), HGroup(
             "object.camera.active",
             "object.camera.auto_shutter",
+            "object.camera.follow",
+        ), HGroup(
             UItem("palette"),
-            "invert"
+            "invert",
         ), UItem("abplots", editor=ComponentEditor(),
                 width=-200, height=-300, resizable=False,
         ),
