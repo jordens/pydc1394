@@ -42,9 +42,10 @@ from pydc1394.camera2 import Camera as DC1394Camera
 
 from angle_sum import angle_sum
 
+import numpy as np
+
 import urlparse, logging, time
 from contextlib import closing
-import numpy as np
 from threading import Thread
 
 
@@ -227,24 +228,24 @@ class Camera(HasTraits):
         return m00, m10, m01, m20, m02, m11
 
     def gauss_axes(self, m00, m10, m01, m20, m02, m11):
+        p = m00/(2*np.pi*(m02*m20-m11**2)**.5)
         q = ((m20-m02)**2+4*m11**2)**.5
-        a = 2*2**.5*((m20+m02)+q)**.5
-        b = 2*2**.5*((m20+m02)-q)**.5
+        a = 2*2**.5*(m20+m02+q)**.5
+        b = 2*2**.5*(m20+m02-q)**.5
         t = .5*np.arctan2(2*m11, m20-m02)
-        return a, b, t
+        return p, a, b, t
 
     def process(self):
         im = self.im
 
-        if self.background > 0:
-            black = np.percentile(im, self.background)
-            im -= black
-        else:
-            black = 0
-
         imc = im
         lc, bc = 0, 0
+        black = 0
         for i in range(self.crops):
+            if self.background > 0:
+                blackc = np.percentile(imc, self.background)
+                imc = imc-blackc
+                black += blackc
             m00, m10, m01, m20, m02, m11 = self.moments(imc)
             w20 = self.rad*4*m20**.5
             w02 = self.rad*4*m02**.5
@@ -256,7 +257,7 @@ class Camera(HasTraits):
                       int(min(imc.shape[0], m01+w02)),
                       int(max(0, m10-w20)):
                       int(min(imc.shape[1], m10+w20))]
-        wa, wb, wt = self.gauss_axes(m00, m10, m01, m20, m02, m11)
+        wp, wa, wb, wt = self.gauss_axes(m00, m10, m01, m20, m02, m11)
 
         m10 += lc
         m01 += bc
@@ -267,8 +268,7 @@ class Camera(HasTraits):
         self.m20 = m20
         self.m02 = m02
         self.black = black/self.maxval
-        peak = m00/(2*np.pi*(m02*m20-m11**2)**.5)
-        self.peak = (peak+black)/self.maxval
+        self.peak = (wp+black)/self.maxval
         self.x = (m10+l-self.width/2)*px
         self.y = (m01+b-self.height/2)*px
         self.t = np.rad2deg(wt)
@@ -290,16 +290,17 @@ class Camera(HasTraits):
 
         #TODO: fix half pixel offset
         xc, yc = m10-im.shape[1]/2., m01-im.shape[0]/2.
-        ima = angle_sum(im, wt, binsize=1)
-        imb = angle_sum(im, wt+np.pi/2, binsize=1)
-        xcr = np.cos(wt)*xc+np.sin(wt)*yc+ima.shape[0]/2.
-        ycr = -np.sin(wt)*xc+np.cos(wt)*yc+imb.shape[0]/2.
-        ima = ima[int(max(0, xcr-self.rad*wa)):
-                  int(min(ima.shape[0], xcr+self.rad*wa))]
-        imb = imb[int(max(0, ycr-self.rad*wb)):
-                  int(min(imb.shape[0], ycr+self.rad*wb))]
-        a = np.arange(ima.shape[0]) - min(xcr, self.rad*wa)
-        b = np.arange(imb.shape[0]) - min(ycr, self.rad*wb)
+        dab = max(abs(np.cos(wt)), abs(np.sin(wt)))
+        ima = angle_sum(im, wt, binsize=dab)
+        imb = angle_sum(im, wt+np.pi/2, binsize=dab)
+        xcr = (np.cos(wt)*xc+np.sin(wt)*yc)/dab+ima.shape[0]/2.
+        ycr = (-np.sin(wt)*xc+np.cos(wt)*yc)/dab+imb.shape[0]/2.
+        ima = ima[int(max(0, xcr-self.rad*wa/dab)):
+                  int(min(ima.shape[0], xcr+self.rad*wa/dab))]
+        imb = imb[int(max(0, ycr-self.rad*wb/dab)):
+                  int(min(imb.shape[0], ycr+self.rad*wb/dab))]
+        a = np.arange(ima.shape[0])*dab - min(xcr*dab, self.rad*wa)
+        b = np.arange(imb.shape[0])*dab - min(ycr*dab, self.rad*wb)
         ga = (m00/(np.pi**.5*wa/2/2**.5))*np.exp(-a**2*(2**.5*2/wa)**2)
         gb = (m00/(np.pi**.5*wb/2/2**.5))*np.exp(-b**2*(2**.5*2/wb)**2)
 
