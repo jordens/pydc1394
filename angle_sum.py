@@ -18,7 +18,7 @@
 import numpy as np
 
 def angle_sum(m, angle, dtype=None, out=None,
-        aspect=1., binsize=0):
+        aspect=1., binsize=None):
     """Compute the sum of a 2D array along an rotated axis.
 
     Parameters
@@ -32,9 +32,9 @@ def angle_sum(m, angle, dtype=None, out=None,
     aspect : float
         The input bin aspect ratio (second dimension/first dimension).
     binsize : float
-        The output bin size in units of the first input dimension bin
+        The output bin size in units of the first input dimension step
         size. If no binsize is given, it defaults to the "natural bin
-        size" which is the larger projection of the two input bin sizes
+        size" which is the larger projection of the two input step sizes
         onto the output dimension (the axis perpendicular to the
         summation axis).
 
@@ -48,7 +48,8 @@ def angle_sum(m, angle, dtype=None, out=None,
     The summation angle is relative to the first dimension.
 
     For 0<=angle<=pi/2 the value at [0,0] ends up in the first bin and
-    the value at [-1,-1] ends up in the last bin.
+    the value at [-1,-1] ends up in the last bin. Up to rounding, the
+    center value will always end up in the center bin.
 
     For angle=3/4*pi the summation is along the diagonal.
     For angle=3/4*pi the summation is along the antidiagonal.
@@ -60,13 +61,14 @@ def angle_sum(m, angle, dtype=None, out=None,
     `angle` the output `o` is:
 
     .. math::
-      o_k = \\sum_l m_{i,j/a}
+      o_k = \\sum_l m_{i,j/a}, where
       i(l,k) = \\cos(\\alpha) l - \\sin(\\alpha) k
       j(l,k) = \\sin(\\alpha) l + \\cos(\\alpha) k
 
     There is no interpolation and artefacts are likely.
 
-    The full array sum is strictly conserved.
+    The full array sum is always strictly conserved:
+    	angle_sum(m, t) == m.sum()
 
     Examples
     --------
@@ -115,9 +117,8 @@ def angle_sum(m, angle, dtype=None, out=None,
     >>> angle_sum(m2, np.pi/4).sum() == m2.sum()
     True
     """
-    #assert len(m.shape) == 2
     m = np.atleast_2d(m)
-    if binsize == 0:
+    if binsize is None:
         binsize = max(abs(np.cos(angle)*aspect),
                       abs(np.sin(angle)))
     # first axis needs to be inverted for the angle convention
@@ -126,28 +127,18 @@ def angle_sum(m, angle, dtype=None, out=None,
     # original coordinates
     i, j = np.ogrid[:m.shape[0], :m.shape[1]]
     # output coordinate
-    k = np.cos(angle)*j*aspect-np.sin(angle)*i
-    # output bin index
-    k = np.floor(k/binsize+.5).astype("int")
+    k = (np.cos(angle)*aspect/binsize)*j-(np.sin(angle)/binsize)*i
     # output array size
     cx, cy = (0, 0, -1, -1), (0, -1, 0, -1)
     km = k[cx, cy].min()
-    kp = k[cx, cy].max()
+    #kp = k[cx, cy].max()
     #assert k.min() == km
     #assert k.max() == kp
-    if out is None:
-        if dtype is None:
-            dtype = m.dtype
-        out = np.zeros((kp-km+1,), dtype)
-    else:
-        assert out.shape[0] >= kp-km+1
-    for ki, mi in zip((k-km).ravel(), m.ravel()):
-        out[ki] += mi
-    return out
+    # output bin index
+    k = np.floor(k-(km-.5)).astype(np.int)
+    return np.bincount(k.ravel(), m.ravel()) #, minlength=kp-km
 
 
 if __name__ == "__main__":
     import doctest
     doctest.testmod(verbose=True)
-    #import profile
-    #profile.run("doctest.testmod()", sort=1)
