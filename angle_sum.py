@@ -17,8 +17,7 @@
 
 import numpy as np
 
-def angle_sum(m, angle, dtype=None, out=None,
-        aspect=1., binsize=None):
+def angle_sum(m, angle, aspect=1., binsize=None):
     """Compute the sum of a 2D array along an rotated axis.
 
     Parameters
