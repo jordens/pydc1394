@@ -140,17 +140,19 @@ class Camera(HasTraits):
     def _do_gain(self, val):
         self.cam.gain.absolute = val
 
-    def auto(self, im, percentile=99, maxiter=10,
+    def auto(self, im, percentile=99.9, maxiter=10,
             minval=.25, maxval=.75, adjustment_factor=.6):
-        p = np.percentile(im, 99)/float(self.maxval)
+        p = np.percentile(im, percentile)/float(self.maxval)
         if not ((p < .25 and self.shutter < self.max_shutter) or
                 (p > .75 and self.shutter > self.min_shutter)):
             return im
         fr = self.cam.framerate.absolute
         self.cam.framerate.absolute = max(
                 self.cam.framerate.absolute_range)
+        l, b, w, h = self.bounds()
         while True:
-            with closing(self.cam.dequeue()) as im_:
+            with closing(self.cam.dequeue()) as im__:
+                im_ = im__[b:b+h, l:l+w].astype(np.int)
                 p = np.percentile(im_, percentile)/float(self.maxval)
                 s = "="
                 if p > maxval:
@@ -201,14 +203,14 @@ class Camera(HasTraits):
         if self.cam:
             with closing(self.cam.dequeue()) as im_:
                 im = np.array(im_).copy()
+            l, b, w, h = self.bounds()
+            im = im[b:b+h, l:l+w].astype(np.int)
             if self.auto_shutter:
                 im = self.auto(im)
             if self.save_format:
                 name = time.strftime(self.save_format)
                 np.savez_compressed(name, im)
                 logging.debug("saved as %s" % name)
-            l, b, w, h = self.bounds()
-            im = im[b:b+h, l:l+w].astype(np.int)
         else:
             im = self.get_dummy()
         if self.average > 1 and self.im.shape == im.shape:
@@ -245,6 +247,7 @@ class Camera(HasTraits):
             if self.background > 0:
                 blackc = np.percentile(imc, self.background)
                 imc = imc-blackc
+                np.clip(imc, 0, self.maxval, out=imc)
                 black += blackc
             m00, m10, m01, m20, m02, m11 = self.moments(imc)
             w20 = self.rad*4*m20**.5
