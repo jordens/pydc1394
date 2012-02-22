@@ -73,7 +73,7 @@ class Camera(HasTraits):
     crops = Int(2) # crop iterations
     rad = Float(3/2.) # crop radius
 
-    background = Range(0, 50, 5)
+    background = Range(0, 99, 5)
 
     x = Float
     y = Float
@@ -366,7 +366,7 @@ class Camera(HasTraits):
                 self.t, self.e,
                 self.black, self.peak)
 
-        logging.info("beam: "+(("% 5.4g,"*len(fields)) % fields))
+        logging.info("beam: "+(("% 6.4g,"*len(fields)) % fields))
 
         self.text = (
             u"centroid x: %.4g µm\n"
