@@ -44,7 +44,7 @@ from special_sums import angle_sum, polar_sum
 
 import numpy as np
 
-import urlparse, logging, time
+import urlparse, logging, time, bisect
 from contextlib import closing
 from threading import Thread
 
@@ -74,8 +74,10 @@ class Camera(HasTraits):
     crops = Int(2) # crop iterations
     rad = Float(3/2.) # crop radius
 
-    background = Range(0, 99, 5)
+    background = Range(0., 1., 0.)
     dark = Bool(False)
+    ignore = Range(0., .5, .01)
+    ignore_radius = Float
 
     x = Float
     y = Float
@@ -256,14 +258,23 @@ class Camera(HasTraits):
         black = 0
         for i in range(self.crops):
             if self.background > 0:
-                blackc = np.percentile(imc, self.background)
-                imc = imc-blackc
-                np.clip(imc, 0, self.maxval, out=imc)
-                black += blackc
+                    blackc = np.percentile(imc, self.background*100)
+                    imc = imc-blackc
+                    np.clip(imc, 0, self.maxval, out=imc)
+                    black += blackc
             m00, m10, m01, m20, m02, m11 = self.moments(imc)
-            w20 = self.rad*4*m20**.5
-            w02 = self.rad*4*m02**.5
             if i < self.crops-1:
+                if self.ignore > 0: # crop based on encircled energy
+                    # TODO: ellipse
+                    re = polar_sum(imc, center=(m01, m10),
+                        direction="azimuthal", binsize=1.)
+                    np.cumsum(re, out=re)
+                    rignore = bisect.bisect(re, (1.-self.ignore)*m00)
+                    self.ignore_radius = rignore
+                    w20 = w02 = rignore
+                else: # crop based on 3 sigma region
+                    w20 = self.rad*4*m20**.5
+                    w02 = self.rad*4*m02**.5
                 lc += int(max(0, m10-w20))
                 bc += int(max(0, m01-w02))
                 imc = imc[
@@ -477,10 +488,12 @@ class Bullseye(HasTraits):
                 #Item("object.camera.d", label="Mean width",
                 #    format_str=u"%.4g µm"),
                 # minor/major
-                Item("object.camera.e", label="Ellipticity",
-                    format_str=u"%.4g"),
+                #Item("object.camera.e", label="Ellipticity",
+                #    format_str=u"%.4g"),
                 #Item("object.camera.peak", label="Peak",
                 #    format_str=u"%.4g")
+                Item("object.camera.ignore_radius", label="Include radius",
+                    format_str=u"%.4g"),
             ),
             style="readonly",
         ), VGroup(
@@ -489,6 +502,7 @@ class Bullseye(HasTraits):
             "object.camera.framerate",
             "object.camera.average",
             "object.camera.background",
+            "object.camera.ignore",
         ), HGroup(
             "object.camera.active",
             "object.camera.auto_shutter",
