@@ -75,6 +75,7 @@ class Camera(HasTraits):
     rad = Float(3/2.) # crop radius
 
     background = Range(0, 99, 5)
+    dark = Bool(False)
 
     x = Float
     y = Float
@@ -100,6 +101,7 @@ class Camera(HasTraits):
             self.cam = None
         self.im = None
         self.grid = None
+        self.darkim = None
         if self.cam:
             self.setup()
 
@@ -203,9 +205,17 @@ class Camera(HasTraits):
     def capture(self):
         if self.cam:
             with closing(self.cam.dequeue()) as im_:
-                im = np.array(im_).copy()
+                im = np.array(im_).copy().astype(np.int)
+            if self.dark:
+                if self.darkim is None:
+                    with closing(self.cam.dequeue()) as im_:
+                        self.darkim = np.array(im_).copy().astype(np.int)
+                im -= self.darkim
+            else:
+                if not (self.darkim is None):
+                    self.darkim = None
             l, b, w, h = self.bounds()
-            im = im[b:b+h, l:l+w].astype(np.int)
+            im = im[b:b+h, l:l+w]
             if self.auto_shutter:
                 im = self.auto(im)
             if self.save_format:
@@ -383,9 +393,10 @@ class Camera(HasTraits):
     def do_follow(self):
         px = self.pixelsize
         r = self.rad
-        x, y = self.x/px, self.y/px
-        rx, ry = r*4*self.m20**.5, r*4*self.m02**.5
-        self.roi = map(float, [x-rx, y-ry, 2*rx, 2*ry])
+        w, h = self.roi[2:]
+        x, y = float(self.x/px-w/2), float(self.y/px-h/2)
+        #rx, ry = r*4*self.m20**.5, r*4*self.m02**.5
+        self.roi = [x, y, w, h]
 
     @on_trait_change("active")
     def _start_me(self, value):
@@ -482,6 +493,7 @@ class Bullseye(HasTraits):
             "object.camera.active",
             "object.camera.auto_shutter",
             "object.camera.follow",
+            "object.camera.dark",
         ), HGroup(
             UItem("palette"),
             "invert",
