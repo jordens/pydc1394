@@ -1,5 +1,7 @@
 #
-#   angle_sum - algorithm to sum an array along arbitrary angles
+#   special_sums - algorithms to sum 2D arrays along angled parallels,
+#   radially or azimuthally
+#
 #   Copyright (C) 2012 Robert Jordens <jordens@phys.ethz.ch>
 #
 #   This program is free software: you can redistribute it and/or modify
@@ -28,9 +30,9 @@ def angle_sum(m, angle, aspect=1., binsize=None):
         The angle of the summation direction defined such that:
             angle_sum(m, angle=0) == np.sum(m, axis=0)
             angle_sum(m, angle=np.pi/2) == np.sum(m, axis=1)
-    aspect : float
+    aspect : float, optional
         The input bin aspect ratio (second dimension/first dimension).
-    binsize : float
+    binsize : float, optional
         The output bin size in units of the first input dimension step
         size. If no binsize is given, it defaults to the "natural bin
         size" which is the larger projection of the two input step sizes
@@ -41,6 +43,10 @@ def angle_sum(m, angle, aspect=1., binsize=None):
     -------
     out : ndarray, shape(K)
         The sum of `m` along the axis at `angle`.
+
+    See also
+    --------
+    polar_sum : similar method summing azimuthally or radially
 
     Notes
     -----
@@ -64,10 +70,11 @@ def angle_sum(m, angle, aspect=1., binsize=None):
       i(l,k) = \\cos(\\alpha) l - \\sin(\\alpha) k
       j(l,k) = \\sin(\\alpha) l + \\cos(\\alpha) k
 
-    There is no interpolation and artefacts are likely.
+    There is no interpolation and artefacts are likely if this function
+    is interpreted as an image processing function.
 
     The full array sum is always strictly conserved:
-    	angle_sum(m, t) == m.sum()
+    	angle_sum(m, t).sum() == m.sum()
 
     Examples
     --------
@@ -138,6 +145,116 @@ def angle_sum(m, angle, aspect=1., binsize=None):
     return np.bincount(k.ravel(), m.ravel()) #, minlength=kp-km
 
 
+def polar_sum(m, center, direction, aspect=1., binsize=None):
+    """Compute the sum of a 2D array radially or azimuthally.
+
+    Parameters
+    ----------
+    m : array_like, shape(N, M)
+        2D input array to be summed
+    center : tuple(float, float)
+        The center of the summation measured from the [0, 0] index
+        in units of the two input step sizes.
+    direction : "radial" or "azimuthal"
+        Summation direction.
+    aspect : float, optional
+        The input bin aspect ratio (second dimension/first dimension).
+    binsize : int, optional
+        The output bin size. If None is given, and direction="radial"
+        then binsize=2*pi/100, else binsize=min(1, aspect).
+
+    Returns
+    -------
+    out : ndarray, shape(K)
+        The radial or azimuthal sum of `m`.
+
+    See also
+    --------
+    angle_sum : similar method summing along angled parallel lines
+
+    Notes
+    -----
+    The index of `out` is the floor()-binned radius or the floor()
+    binned angle, both according to `binsize`.
+
+    Angles are measured from the positive second index axis towards the
+    negative first index axis. They correspond to mathematically
+    positive angles in the index coordinates of m[::-1] -- or the [0, 0]
+    index in the lower left.
+
+    If direction="azimuthal" then the length of the output is determined
+    by the maximal distance to the center. The radius-bins are [0, binsize),
+    [binsize, 2*binsize), ... up to [r, r+binsize) for
+    some value r with max_radius-binsize <= r < max_radius.
+    
+    If direction="radial" the length is always 2*pi/binsize. This is not
+    the same as arctan2(i, j) which would distinguish +pi and -pi!
+    The azimuthal bins are therefore [-pi, -pi+binsize),
+    [-pi+binsize, 2*binsize), ... up to [p-binsize, p) for some p with 
+    pi-binsize <= p < pi. The values at +pi end up in the first bin.
+    See arctan2() for the definition of the behaviour other special
+    cases.
+
+    There is no interpolation and artefacts are likely if this function
+    is interpreted as an image processing function.
+
+    The full array sum is always strictly conserved:
+    	polar_sum(m, ...).sum() == m.sum()
+
+    Examples
+    --------
+    >>> m = np.arange(1., 10.).reshape((3, 3))
+    >>> polar_sum(m, (0, 0), "radial").sum() == m.sum()
+    True
+    >>> polar_sum(m, (0, 0), "azimuthal").sum() == m.sum()
+    True
+    >>> polar_sum(m, (1, 1), "radial").sum() == m.sum()
+    True
+    >>> polar_sum(m, (1, 1), "azimuthal").sum() == m.sum()
+    True
+    >>> polar_sum(m, (1, 1), "radial", binsize=np.pi/4)
+    array([  4.,   1.,   2.,   3.,  11.,   9.,   8.,   7.])
+    >>> polar_sum(m, (1, 1), "azimuthal", binsize=1.)
+    array([  5.,  40.])
+    >>> polar_sum(m, (1, 1), "azimuthal", binsize=2**.5/2)
+    array([  5.,  20.,  20.])
+    >>> polar_sum(m, (.5, .5), "azimuthal", binsize=1)
+    array([ 12.,  24.,   9.])
+    >>> polar_sum(m, (0, 0), "radial", binsize=np.pi/8)
+    array([  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.,   6.,   6.,  22.,
+             0.,  11.,   0.,   0.,   0.])
+    >>> polar_sum(m, (0, 0), "radial", binsize=np.pi/2)
+    array([  0.,   0.,  34.,  11.])
+    >>> m2 = np.arange(123*345).reshape((123, 345))
+    >>> polar_sum(m2, (67, 89), "radial", binsize=2*np.pi/1011).shape[0]
+    1011
+    """
+    m = np.atleast_2d(m)
+    # original coordinates
+    i, j = np.ogrid[:m.shape[0], :m.shape[1]]
+    i, j = i-center[0], j-center[1]
+    # output coordinate
+    if direction == "azimuthal":
+        k = (j**2*aspect**2+i**2)**.5
+        if binsize is None:
+            binsize = min(1., aspect)
+        minlength = None
+    elif direction == "radial":
+        k = np.arctan2(i, j*aspect)+np.pi
+        if binsize is None:
+            binsize = 2*np.pi/100
+        minlength = int(2*np.pi/binsize)+1
+    else:
+        raise ValueError("direction needs to be 'radial' or 'azimuthal'")
+    k = (k/binsize).astype(np.int)
+    r = np.bincount(k.ravel(), m.ravel(), minlength)
+    if direction == "radial":
+        assert r.shape[0] == minlength, (r.shape, minlength)
+        r[0] += r[-1]
+        r = r[:-1]
+    return r
+
+
 if __name__ == "__main__":
     import doctest
-    doctest.testmod(verbose=True)
+    doctest.testmod()

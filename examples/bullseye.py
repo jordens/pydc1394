@@ -40,7 +40,7 @@ from enthought.enable.component_editor import ComponentEditor
 
 from pydc1394.camera2 import Camera as DC1394Camera
 
-from angle_sum import angle_sum
+from special_sums import angle_sum, polar_sum
 
 import numpy as np
 
