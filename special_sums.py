@@ -76,6 +76,9 @@ def angle_sum(m, angle, aspect=1., binsize=None):
     The full array sum is always strictly conserved:
     	angle_sum(m, t).sum() == m.sum()
 
+    The function uses floor(coordinate+.5) to bin (c.f. around, rint,
+    trunc).
+
     Examples
     --------
     >>> m = np.arange(9.).reshape((3, 3))
@@ -200,6 +203,8 @@ def polar_sum(m, center, direction, aspect=1., binsize=None):
 
     The full array sum is always strictly conserved:
     	polar_sum(m, ...).sum() == m.sum()
+
+    The function uses (coordinate).astype(np.int) to bin.
 
     Examples
     --------
