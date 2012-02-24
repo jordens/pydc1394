@@ -102,6 +102,12 @@ def info(cam):
             defect>>31, (defect>>25)&1, (defect>>12)&0xfff,
             (defect&0xfff))
 
+    #cam[0x1098] |= (1<<25)
+    auto_shutter_range = cam.get_register(0x1098)
+    print "min dark noise: avail %s, on %s, min %s, max %s" % (
+            auto_shutter_range>>31, (auto_shutter_range>>25)&1,
+            (auto_shutter_range>>12)&0xfff, (auto_shutter_range&0xfff))
+
     f7 = cam.get_register(0x1ac8)
     print "format7: avail %s, bin %s by %s" % (f7>>31,
             ((f7>>20)&0xf)+1, ((f7>>16)&0xf)+1)
