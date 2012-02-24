@@ -224,7 +224,7 @@ class Camera(HasTraits):
             l, b, w, h = self.bounds()
             im = im[b:b+h, l:l+w]
             if self.auto_shutter:
-                im = self.auto(im)
+                im = self.auto(im) # TODO: correct for self.darkim
             if self.save_format:
                 name = time.strftime(self.save_format)
                 np.savez_compressed(name, im)
@@ -257,6 +257,8 @@ class Camera(HasTraits):
 
     def process(self):
         im = self.im
+        px = self.pixelsize
+        l, b, w, h = self.bounds()
 
         imc = im
         lc, bc = 0, 0
@@ -275,7 +277,7 @@ class Camera(HasTraits):
                         direction="azimuthal", binsize=1.)
                     np.cumsum(re, out=re)
                     rignore = bisect.bisect(re, (1.-self.ignore)*m00)
-                    self.ignore_radius = rignore
+                    self.ignore_radius = rignore*px
                     w20 = w02 = rignore
                 else: # crop based on 3 sigma region
                     w20 = self.rad*4*m20**.5
@@ -291,8 +293,6 @@ class Camera(HasTraits):
 
         m10 += lc
         m01 += bc
-        px = self.pixelsize
-        l, b, w, h = self.bounds()
 
         self.m00 = m00
         self.m20 = m20
@@ -398,9 +398,9 @@ class Camera(HasTraits):
         self.text = (
             u"centroid x: %.4g µm\n"
             u"centroid y: %.4g µm\n"
-            u"major: %.4g µm\n"
-            u"minor: %.4g µm\n"
-            u"angle: %.4g°\n"
+            u"major 4σ: %.4g µm\n"
+            u"minor 4σ: %.4g µm\n"
+            u"rotation: %.4g°\n"
             u"ellipticity: %.4g\n"
             u"black: %.4g\n"
             u"peak: %.4g\n"
@@ -476,19 +476,19 @@ class Bullseye(HasTraits):
     traits_view = View(HGroup(VGroup(
         HGroup(
             VGroup(
-                Item("object.camera.x", label="Centroid X",
+                Item("object.camera.x", label="Centroid x",
                     format_str=u"%.4g µm"),
                 # widths are full width at 1/e^2 intensity
-                Item("object.camera.a", label="Major width",
+                Item("object.camera.a", label="Major 4σ",
                     format_str=u"%.4g µm"),
                 Item("object.camera.t", label="Rotation",
                     format_str=u"%.4g°"),
                 #Item("object.camera.black", label="Black",
                 #    format_str=u"%.4g"),
             ), VGroup(
-                Item("object.camera.y", label="Centroid Y",
+                Item("object.camera.y", label="Centroid y",
                     format_str=u"%.4g µm"),
-                Item("object.camera.b", label="Minor width",
+                Item("object.camera.b", label="Minor 4σ",
                     format_str=u"%.4g µm"),
                 #Item("object.camera.d", label="Mean width",
                 #    format_str=u"%.4g µm"),
@@ -498,7 +498,7 @@ class Bullseye(HasTraits):
                 #Item("object.camera.peak", label="Peak",
                 #    format_str=u"%.4g")
                 Item("object.camera.ignore_radius", label="Include radius",
-                    format_str=u"%.4g"),
+                    format_str=u"%.4g µm"),
             ),
             style="readonly",
         ), VGroup(
@@ -674,6 +674,8 @@ class Bullseye(HasTraits):
         p.color_mapper.range.low_setting = a
         p.color_mapper.range.high_setting = b
 
+    # TODO: bad layout at window creation, base layout for one
+    # frame at activation, follow
     # value_range seems to be updated after index_range, take this
     @on_trait_change("screen.value_range.updated")
     def set_range(self):
