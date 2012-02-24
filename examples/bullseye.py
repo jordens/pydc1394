@@ -38,7 +38,7 @@ from chaco.tools.api import (ZoomTool, SaveTool, ImageInspectorTool,
 
 from enthought.enable.component_editor import ComponentEditor
 
-from pydc1394.camera2 import Camera as DC1394Camera
+from pydc1394.camera2 import Camera as DC1394Camera, DC1394Error
 
 from special_sums import angle_sum, polar_sum
 
@@ -58,6 +58,7 @@ class Camera(HasTraits):
     maxval = Int((1<<8)-1)
     min_shutter = 5e-6
     max_shutter = 100e-3
+    gamma = 1. # 4 would be better for SNR: d/sigma_d = gamma n/sigma_n
 
     shutter = Range(min_shutter, max_shutter, 1e-3)
     auto_shutter = Bool(False)
@@ -117,14 +118,18 @@ class Camera(HasTraits):
         self.mode = self.cam.modes_dict["1280x960_Y8"]
         self.cam.mode = self.mode
         self.cam.setup(framerate=self.framerate,
-                gain=self.gain, shutter=self.shutter)
+                gain=self.gain, shutter=self.shutter, gamma=self.gamma)
         self.cam.setup(active=False,
-                exposure=None, brightness=None, gamma=None)
+                exposure=None, brightness=None)
+        #self.cam[0x1098] |= 1<<25
 
     def start(self):
         if not self.cam:
             return
-        self.cam.start_capture()
+        try:
+            self.cam.start_capture()
+        except DC1394Error:
+            pass # assume it is already running
         self.cam.start_video()
 
     def stop(self):
