@@ -49,7 +49,7 @@ from contextlib import closing
 from threading import Thread
 
 
-class Camera(HasTraits):
+class Capture(HasTraits):
     cam = Instance(DC1394Camera)
 
     pixelsize = Float(3.75)
@@ -58,7 +58,7 @@ class Camera(HasTraits):
     maxval = Int((1<<8)-1)
     min_shutter = 5e-6
     max_shutter = 100e-3
-    gamma = 1. # 4 would be better for SNR: d/sigma_d = gamma n/sigma_n
+    gamma = 1. # 2 would be better for SNR: d/sigma_d = gamma n/sigma_n
 
     shutter = Range(min_shutter, max_shutter, 1e-3)
     auto_shutter = Bool(False)
@@ -67,34 +67,14 @@ class Camera(HasTraits):
     average = Range(1, 20, 1)
 
     roi = ListFloat([-1280/2, -960/2, 1280, 960], minlen=4, maxlen=4)
-    follow = Bool(False)
-
-    thread = Instance(Thread)
-    active = Bool(False)
-
-    crops = Int(2) # crop iterations
-    rad = Float(3/2.) # crop radius
-
-    background = Range(0., 1., 0.)
+    
     dark = Bool(False)
-    ignore = Range(0., .5, .01)
-    ignore_radius = Float
-
-    x = Float
-    y = Float
-    t = Float
-    e = Float
-    a = Float
-    b = Float
-    d = Float
-    black = Float
-    peak = Float
-
-    text = Unicode
+    darkim = None
+    
     save_format = Str
 
     def __init__(self, uri, **k):
-        super(Camera, self).__init__(**k)
+        super(Capture, self).__init__(**k)
         scheme, loc, path, query, frag = urlparse.urlsplit(uri)
         if scheme == "guid":
             self.cam = DC1394Camera(path)
@@ -103,16 +83,8 @@ class Camera(HasTraits):
         elif scheme == "none":
             self.cam = None
         self.im = None
-        self.grid = None
-        self.darkim = None
         if self.cam:
             self.setup()
-
-    def initialize(self):
-        self.start()
-        self.capture()
-        self.process()
-        self.stop()
 
     def setup(self):
         self.mode = self.cam.modes_dict["1280x960_Y8"]
@@ -236,7 +208,42 @@ class Camera(HasTraits):
             self.im = (self.im*self.average + im)/(self.average + 1)
         else:
             self.im = im
-  
+ 
+
+class Process(HasTraits):
+    capture = Instance(Capture)
+
+    thread = Instance(Thread)
+    active = Bool(False)
+
+    follow = Bool(False)
+    crops = Int(2) # crop iterations
+    rad = Float(3/2.) # crop radius
+
+    background = Range(0., 1., 0.)
+    ignore = Range(0., .5, .01)
+    ignore_radius = Float
+
+    x = Float
+    y = Float
+    t = Float
+    e = Float
+    a = Float
+    b = Float
+    d = Float
+    black = Float
+    peak = Float
+
+    text = Unicode
+
+    grid = None
+
+    def initialize(self):
+        self.capture.start()
+        self.capture.capture()
+        self.process()
+        self.capture.stop()
+
     def moments(self, im):
         y, x = np.ogrid[:im.shape[0], :im.shape[1]]
         imx, imy = im.sum(axis=0)[None, :], im.sum(axis=1)[:, None]
@@ -256,9 +263,9 @@ class Camera(HasTraits):
         return p, a, b, t
 
     def process(self):
-        im = self.im
-        px = self.pixelsize
-        l, b, w, h = self.bounds()
+        im = self.capture.im
+        px = self.capture.pixelsize
+        l, b, w, h = self.capture.bounds()
 
         imc = im
         lc, bc = 0, 0
@@ -267,7 +274,7 @@ class Camera(HasTraits):
             if self.background > 0:
                     blackc = np.percentile(imc, self.background*100)
                     imc = imc-blackc
-                    np.clip(imc, 0, self.maxval, out=imc)
+                    np.clip(imc, 0, self.captue.maxval, out=imc)
                     black += blackc
             m00, m10, m01, m20, m02, m11 = self.moments(imc)
             if i < self.crops-1:
@@ -297,10 +304,10 @@ class Camera(HasTraits):
         self.m00 = m00
         self.m20 = m20
         self.m02 = m02
-        self.black = black/self.maxval
-        self.peak = (wp+black)/self.maxval
-        self.x = (m10+l-self.width/2)*px
-        self.y = (m01+b-self.height/2)*px
+        self.black = black/self.capture.maxval
+        self.peak = (wp+black)/self.capture.maxval
+        self.x = (m10+l-self.capture.width/2)*px
+        self.y = (m01+b-self.capture.height/2)*px
         self.t = np.rad2deg(wt)
         self.a = wa*px
         self.b = wb*px
@@ -309,8 +316,8 @@ class Camera(HasTraits):
 
         self.update_text()
 
-        x = np.arange(l, l+w)-self.width/2
-        y = np.arange(b, b+h)-self.height/2
+        x = np.arange(l, l+w)-self.capture.width/2
+        y = np.arange(b, b+h)-self.capture.height/2
         xbounds = (np.r_[x, x[-1]+1]-.5)*px
         ybounds = (np.r_[y, y[-1]+1]-.5)*px
         imx = im.sum(axis=0)
@@ -352,7 +359,7 @@ class Camera(HasTraits):
 
 
     def update_markers(self):
-        px = self.pixelsize
+        px = self.capture.pixelsize
         ts = np.linspace(0, 2*np.pi, 40)
         ex, ey = self.a/2*np.cos(ts), self.b/2*np.sin(ts)
         t = np.deg2rad(self.t)
@@ -398,8 +405,8 @@ class Camera(HasTraits):
         self.text = (
             u"centroid x: %.4g µm\n"
             u"centroid y: %.4g µm\n"
-            u"major 4σ: %.4g µm\n"
-            u"minor 4σ: %.4g µm\n"
+            u"major 4sig: %.4g µm\n"
+            u"minor 4sig: %.4g µm\n"
             u"rotation: %.4g°\n"
             u"ellipticity: %.4g\n"
             u"black: %.4g\n"
@@ -407,12 +414,12 @@ class Camera(HasTraits):
             ) % fields
 
     def do_follow(self):
-        px = self.pixelsize
+        px = self.capture.pixelsize
         r = self.rad
-        w, h = self.roi[2:]
+        w, h = self.capture.roi[2:]
         x, y = float(self.x/px-w/2), float(self.y/px-h/2)
         #rx, ry = r*4*self.m20**.5, r*4*self.m02**.5
-        self.roi = [x, y, w, h]
+        self.capture.roi = [x, y, w, h]
 
     @on_trait_change("active")
     def _start_me(self, value):
@@ -444,15 +451,15 @@ class Camera(HasTraits):
 
     def run(self):
         logging.debug("start")
-        self.start()
+        self.capture.start()
         while self.active:
-            self.capture()
+            self.capture.capture()
             self.process()
             #logging.debug("image processed")
             if self.follow:
                 self.do_follow()
         logging.debug("stop")
-        self.stop()
+        self.capture.stop()
         self.thread = None
 
 slider_editor=DefaultOverride(mode="slider")
@@ -466,53 +473,55 @@ class Bullseye(HasTraits):
     vert = Instance(Plot)
     asum = Instance(Plot)
     bsum = Instance(Plot)
-    camera = Instance(Camera)
+
+    process = Instance(Process)
 
     palette = Enum("gray", "jet", "cool", "hot", "prism", "hsv")
     invert = Bool(True)
 
-    save_format = Delegate("camera", prefix="save_format", modify=True)
+    label = None
+    gridm = None
 
     traits_view = View(HGroup(VGroup(
         HGroup(
             VGroup(
-                Item("object.camera.x", label="Centroid x",
+                Item("object.process.x", label="Centroid x",
                     format_str=u"%.4g µm"),
                 # widths are full width at 1/e^2 intensity
-                Item("object.camera.a", label="Major 4σ",
+                Item("object.process.a", label="Major 4sig",
                     format_str=u"%.4g µm"),
-                Item("object.camera.t", label="Rotation",
+                Item("object.process.t", label="Rotation",
                     format_str=u"%.4g°"),
-                #Item("object.camera.black", label="Black",
+                #Item("object.process.black", label="Black",
                 #    format_str=u"%.4g"),
             ), VGroup(
-                Item("object.camera.y", label="Centroid y",
+                Item("object.process.y", label="Centroid y",
                     format_str=u"%.4g µm"),
-                Item("object.camera.b", label="Minor 4σ",
+                Item("object.process.b", label="Minor 4sig",
                     format_str=u"%.4g µm"),
-                #Item("object.camera.d", label="Mean width",
+                #Item("object.process.d", label="Mean width",
                 #    format_str=u"%.4g µm"),
                 # minor/major
-                #Item("object.camera.e", label="Ellipticity",
+                #Item("object.process.e", label="Ellipticity",
                 #    format_str=u"%.4g"),
-                #Item("object.camera.peak", label="Peak",
+                #Item("object.process.peak", label="Peak",
                 #    format_str=u"%.4g")
-                Item("object.camera.ignore_radius", label="Include radius",
+                Item("object.process.ignore_radius", label="Include radius",
                     format_str=u"%.4g µm"),
             ),
             style="readonly",
         ), VGroup(
-            "object.camera.shutter",
-            "object.camera.gain",
-            "object.camera.framerate",
-            "object.camera.average",
-            "object.camera.background",
-            "object.camera.ignore",
+            "object.process.capture.shutter",
+            "object.process.capture.gain",
+            "object.process.capture.framerate",
+            "object.process.capture.average",
+            "object.process.background",
+            "object.process.ignore",
         ), HGroup(
-            "object.camera.active",
-            "object.camera.auto_shutter",
-            "object.camera.follow",
-            "object.camera.dark",
+            "object.process.active",
+            "object.process.capture.auto_shutter",
+            "object.process.follow",
+            "object.process.capture.dark",
         ), HGroup(
             UItem("palette"),
             "invert",
@@ -524,15 +533,11 @@ class Bullseye(HasTraits):
     layout="split",
     ), resizable=True, title=u"Bullseye ― Beam Profiler", width=1000)
 
-    def __init__(self, uri="first:", **k):
+    def __init__(self, **k):
         super(Bullseye, self).__init__(**k)
-        self.label = None
-        self.gridm = None
-
         self.data = ArrayPlotData()
-        self.camera = Camera(uri)
-        self.camera.data = self.data
-        self.camera.initialize()
+        self.process.data = self.data
+        self.process.initialize()
 
         self.setup_plots()
         self.populate_plots()
@@ -543,10 +548,10 @@ class Bullseye(HasTraits):
                 border_visible=False)
         self.screen.index_grid.visible = False
         self.screen.value_grid.visible = False
-        px = self.camera.pixelsize
-        w, h = self.camera.width, self.camera.height
+        px = self.process.capture.pixelsize
+        w, h = self.process.capture.width, self.process.capture.height
         self.screen.index_range.low_setting = -w/2*px
-        # self.screen.index_range.high_setting
+        self.screen.index_range.high_setting = w/2*px
         self.screen.value_range.low_setting = -h/2*px
         self.screen.value_range.high_setting = h/2*px
 
@@ -554,7 +559,7 @@ class Bullseye(HasTraits):
                 resizable="h", padding=0, height=100,
                 bgcolor="lightgray", border_visible=False)
         self.horiz.value_mapper.range.low_setting = \
-                -.1*self.camera.maxval
+                -.1*self.process.capture.maxval
         self.horiz.index_range = self.screen.index_range
         self.vert = Plot(self.data, orientation="v",
                 resizable="v", padding=0, width=100,
@@ -565,7 +570,7 @@ class Bullseye(HasTraits):
             p.index_grid.visible = True
             p.value_grid.visible = False
         self.vert.value_mapper.range.low_setting = \
-                -.1*self.camera.maxval
+                -.1*self.process.capture.maxval
         self.vert.index_range = self.screen.value_range
 
         #self.vert.value_range = self.horiz.value_range
@@ -577,7 +582,7 @@ class Bullseye(HasTraits):
         self.mini.value_axis.visible = False
         self.label = PlotLabel(component=self.mini,
                 overlay_position="inside left", font="modern 10",
-                text=self.camera.text)
+                text=self.process.text)
         self.mini.overlays.append(self.label)
 
         self.plots = GridPlotContainer(shape=(2,2), padding=0,
@@ -622,7 +627,7 @@ class Bullseye(HasTraits):
                 colormap=color_map_name_dict[self.palette],
                 )[0]
         self.set_invert()
-        self.camera.grid = self.screenplot.index
+        self.process.grid = self.screenplot.index
         self.gridm = self.screenplot.index_mapper
         t = ImageInspectorTool(self.screenplot)
         self.screen.tools.append(t)
@@ -654,7 +659,7 @@ class Bullseye(HasTraits):
         self.close()
 
     def close(self):
-        self.camera.active = False
+        self.process.active = False
 
     @on_trait_change("palette")
     def set_colormap(self):
@@ -668,9 +673,9 @@ class Bullseye(HasTraits):
     def set_invert(self):
         p = self.screenplot
         if self.invert:
-            a, b = self.camera.maxval, 0
+            a, b = self.process.capture.maxval, 0
         else:
-            a, b = 0, self.camera.maxval
+            a, b = 0, self.process.capture.maxval
         p.color_mapper.range.low_setting = a
         p.color_mapper.range.high_setting = b
 
@@ -692,13 +697,13 @@ class Bullseye(HasTraits):
                 self.gridm.range.x_range.high_setting = dr_new
         l, r = self.screen.index_range.low, self.screen.index_range.high
         b, t = self.screen.value_range.low, self.screen.value_range.high
-        px = self.camera.pixelsize
-        self.camera.roi = [l/px, b/px, (r-l)/px, (t-b)/px]
+        px = self.process.capture.pixelsize
+        self.process.capture.roi = [l/px, b/px, (r-l)/px, (t-b)/px]
 
-    @on_trait_change("camera.text")
-    def set_text(self):
+    @on_trait_change("process.text")
+    def set_text(self, value):
         if self.label is not None:
-            self.label.text = self.camera.text
+            self.label.text = value
 
 
 def main():
@@ -715,14 +720,15 @@ def main():
     p.add_option("-d", "--debug", default="info",
             help="log level (debug, info, warn, error, "
                 "critical, fatal) [%default]")
-    o, a = p.parse_args()
-    logging.basicConfig(filename=o.log,
-            level=getattr(logging, o.debug.upper()),
+    opts, args = p.parse_args()
+    logging.basicConfig(filename=opts.log,
+            level=getattr(logging, opts.debug.upper()),
             format='%(asctime)s %(levelname)s %(message)s')
-    b = Bullseye(o.camera)
-    b.save_format = o.save
-    b.configure_traits()
-    b.close()
+    cam = Capture(opts.camera)
+    proc = Process(capture=cam, save_format=opts.save)
+    bull = Bullseye(process=proc)
+    bull.configure_traits()
+    bull.close()
 
 if __name__ == '__main__':
     main()
