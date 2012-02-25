@@ -101,7 +101,7 @@ class Capture(HasTraits):
         try:
             self.cam.start_capture()
         except DC1394Error:
-            pass # assume it is already running
+            logging.debug("camera capture already running")
         self.cam.start_video()
 
     def stop(self):
@@ -123,10 +123,10 @@ class Capture(HasTraits):
         self.cam.gain.absolute = val
 
     def auto(self, im, percentile=99.9, maxiter=10,
-            minval=.25, maxval=.75, adjustment_factor=.6):
+            minval=.25, maxval=.75, adjustment_factor=.5):
         p = np.percentile(im, percentile)/float(self.maxval)
-        if not ((p < .25 and self.shutter < self.max_shutter) or
-                (p > .75 and self.shutter > self.min_shutter)):
+        if not ((p < minval and self.shutter < self.max_shutter) or
+                (p > maxval and self.shutter > self.min_shutter)):
             return im
         fr = self.cam.framerate.absolute
         self.cam.framerate.absolute = max(
