@@ -321,7 +321,7 @@ class Process(HasTraits):
         m11 = (im*x*y).sum()/m00
         return m00, m10, m01, m20, m02, m11
 
-    def gauss(self, m00, m10, m01, m20, m02, m11):
+    def gauss(self, m00, m20, m02, m11):
         p = m00/(2*np.pi*(m02*m20-m11**2)**.5)
         q = ((m20-m02)**2+4*m11**2)**.5
         a = 2*2**.5*(m20+m02+q)**.5
@@ -329,10 +329,28 @@ class Process(HasTraits):
         t = .5*np.arctan2(2*m11, m20-m02)
         return p, a, b, t
 
-    def process(self, im):
-        px = self.capture.pixelsize
-        l, b, w, h = self.capture.bounds
+    def do_crop(self, imc, m00, m10, m01, m20, m02, m11):
+        if self.ignore > 0: # crop based on encircled energy
+            # TODO: ellipse
+            re = polar_sum(imc, center=(m01, m10),
+                direction="azimuthal", aspect=1., binsize=1.)
+            np.cumsum(re, out=re)
+            rinc = bisect.bisect(re, (1.-self.ignore)*m00)
+            w20 = w02 = rinc
+        else: # crop based on 3 sigma region
+            w20 = self.rad*4*m20**.5
+            w02 = self.rad*4*m02**.5
+            rinc = ((w20**2+w02**2)/2)**.5
+        lc = int(max(0, m10-w20))
+        bc = int(max(0, m01-w02))
+        imc = imc[
+              int(max(0, m01-w02)):
+              int(min(imc.shape[0], m01+w02)),
+              int(max(0, m10-w20)):
+              int(min(imc.shape[1], m10+w20))]
+        return rinc, lc, bc, imc
 
+    def process(self, im):
         imc = im
         lc, bc = 0, 0
         black = 0
@@ -340,33 +358,22 @@ class Process(HasTraits):
             if self.background > 0:
                 blackc = np.percentile(imc, self.background*100)
                 imc = imc-blackc
-                np.clip(imc, 0, self.capture.maxval, out=imc)
+                #np.clip(imc, 0, self.capture.maxval, out=imc)
                 black += blackc
             m00, m10, m01, m20, m02, m11 = self.moments(imc)
             if i < self.crops-1:
-                if self.ignore > 0: # crop based on encircled energy
-                    # TODO: ellipse
-                    re = polar_sum(imc, center=(m01, m10),
-                        direction="azimuthal", binsize=1.)
-                    np.cumsum(re, out=re)
-                    rinc = bisect.bisect(re, (1.-self.ignore)*m00)
-                    self.include_radius = rinc*px
-                    w20 = w02 = rinc
-                else: # crop based on 3 sigma region
-                    w20 = self.rad*4*m20**.5
-                    w02 = self.rad*4*m02**.5
-                lc += int(max(0, m10-w20))
-                bc += int(max(0, m01-w02))
-                imc = imc[
-                      int(max(0, m01-w02)):
-                      int(min(imc.shape[0], m01+w02)),
-                      int(max(0, m10-w20)):
-                      int(min(imc.shape[1], m10+w20))]
-        wp, wa, wb, wt = self.gauss(m00, m10, m01, m20, m02, m11)
+                rinc, dlc, dbc, imc = self.do_crop(
+                        imc, m00, m10, m01, m20, m02, m11)
+                lc += dlc
+                bc += dbc
 
         m10 += lc
         m01 += bc
+        wp, wa, wb, wt = self.gauss(m00, m20, m02, m11)
 
+        px = self.capture.pixelsize
+        l, b, w, h = self.capture.bounds
+        
         self.m00 = m00
         self.m20 = m20
         self.m02 = m02
@@ -379,6 +386,7 @@ class Process(HasTraits):
         self.b = wb*px
         self.d = ((self.a**2+self.b**2)/2)**.5
         self.e = wb/wa
+        self.include_radius = rinc*px
 
         self.update_text()
 
@@ -386,7 +394,7 @@ class Process(HasTraits):
         y = np.arange(b, b+h)-self.capture.height/2
         xbounds = (np.r_[x, x[-1]+1]-.5)*px
         ybounds = (np.r_[y, y[-1]+1]-.5)*px
-        imx = im.sum(axis=0)
+        imx = im.sum(axis=0) # TODO: available from moments()
         imy = im.sum(axis=1)
         gx = (m00/(2*np.pi*m20)**.5)*np.exp(-(x-self.x/px)**2/(m20*2))
         gy = (m00/(2*np.pi*m02)**.5)*np.exp(-(y-self.y/px)**2/(m02*2))
@@ -394,7 +402,7 @@ class Process(HasTraits):
         #TODO: fix half pixel offset
         xc, yc = m10-im.shape[1]/2., m01-im.shape[0]/2.
         dab = max(abs(np.cos(wt)), abs(np.sin(wt)))
-        ima = angle_sum(im, wt, binsize=dab)
+        ima = angle_sum(im, wt, binsize=dab) # minimize binning artefacts
         imb = angle_sum(im, wt+np.pi/2, binsize=dab)
         xcr = (np.cos(wt)*xc+np.sin(wt)*yc)/dab+ima.shape[0]/2.
         ycr = (-np.sin(wt)*xc+np.cos(wt)*yc)/dab+imb.shape[0]/2.
@@ -417,20 +425,19 @@ class Process(HasTraits):
             ("ima", ima), ("imb", imb),
             ("ga", ga), ("gb", gb),
             ))
-        upd.update(self.update_markers())
+        upd.update(self.markers())
         self.data.arrays.update(upd)
         self.data.data_changed = {"changed": upd.keys()}
         if self.grid is not None:
             self.grid.set_data(xbounds, ybounds)
 
-
-    def update_markers(self):
+    def markers(self):
         px = self.capture.pixelsize
-        ts = np.linspace(0, 2*np.pi, 40)
+        ts = np.linspace(0, 2*np.pi, 41)
         ex, ey = self.a/2*np.cos(ts), self.b/2*np.sin(ts)
         t = np.deg2rad(self.t)
         ex, ey = ex*np.cos(t)-ey*np.sin(t), ex*np.sin(t)+ey*np.cos(t)
-        k = np.array([-3/2., 3/2.])
+        k = np.array([-self.rad, self.rad])
 
         upd = dict((
             ("ell1_x", self.x+ex),
@@ -781,8 +788,7 @@ class Bullseye(HasTraits):
         p.color_mapper.range.low_setting = a
         p.color_mapper.range.high_setting = b
 
-    # TODO: bad layout at window creation, base layout for one
-    # frame at activation, track
+    # TODO: bad layout for one frame at activation, track
     # value_range seems to be updated after index_range, take this
     @on_trait_change("screen.value_range.updated")
     def set_range(self):
