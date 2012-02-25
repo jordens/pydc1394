@@ -544,50 +544,87 @@ class Bullseye(HasTraits):
         HGroup(
             VGroup(
                 Item("object.process.x", label="Centroid x",
-                    format_str=u"%.4g µm"),
+                    format_str=u"%.4g µm",
+                    tooltip="horizontal beam position relative to chip "
+                    "center"),
                 # widths are full width at 1/e^2 intensity
                 Item("object.process.a", label="Major 4sig",
-                    format_str=u"%.4g µm"),
+                    format_str=u"%.4g µm",
+                    tooltip="major axis beam width 4 sigma ~ 1/e^2 width"),
                 Item("object.process.t", label="Rotation",
-                    format_str=u"%.4g°"),
+                    format_str=u"%.4g°",
+                    tooltip="angle between horizontal an major axis"),
                 #Item("object.process.black", label="Black",
-                #    format_str=u"%.4g"),
+                #    format_str=u"%.4g",
+                #    tooltip="background black level"),
             ), VGroup(
                 Item("object.process.y", label="Centroid y",
-                    format_str=u"%.4g µm"),
+                    format_str=u"%.4g µm",
+                    tooltip="vertical beam position relative to chip "
+                    "center"),
                 Item("object.process.b", label="Minor 4sig",
-                    format_str=u"%.4g µm"),
+                    format_str=u"%.4g µm",
+                    tooltip="major axis beam width 4 sigma ~ 1/e^2 width"),
                 #Item("object.process.d", label="Mean width",
-                #    format_str=u"%.4g µm"),
+                #    format_str=u"%.4g µm",
+                #    tooltip="mean beam width 4 sigma ~ 1/e^2 width"),
                 # minor/major
                 #Item("object.process.e", label="Ellipticity",
-                #    format_str=u"%.4g"),
+                #    format_str=u"%.4g",
+                #    tooltip="ellipticity minor-to-major width ratio"),
                 #Item("object.process.peak", label="Peak",
-                #    format_str=u"%.4g")
+                #    format_str=u"%.4g",
+                #    tooltip="peak pixel level"),
                 Item("object.process.ignore_radius", label="Include radius",
-                    format_str=u"%.4g µm"),
+                    format_str=u"%.4g µm",
+                    tooltip="energy inclusion radius according to ignore "
+                    "level, used to crop before taking moments"),
             ),
             style="readonly",
         ), VGroup(
-            "object.process.capture.shutter",
-            "object.process.capture.gain",
-            "object.process.capture.framerate",
-            "object.process.capture.average",
-            "object.process.background",
-            "object.process.ignore",
+            Item("object.process.capture.shutter",
+                tooltip="exposure time per frame in seconds"),
+            Item("object.process.capture.gain",
+                tooltip="analog camera gain in dB"),
+            Item("object.process.capture.framerate",
+                tooltip="frames per second to attempt, may be limited by "
+                "shutter time and processing speed"),
+            Item("object.process.capture.average",
+                tooltip="number of subsequent images to average "
+                "with exponentially decaying weight"),
+            Item("object.process.background",
+                tooltip="background intensity percentile to subtract "
+                "from image"),
+            Item("object.process.ignore",
+                tooltip="fraction of total intensity to ignore for "
+                "cropping, determines include radius"),
         ), HGroup(
-            "object.process.active",
-            "object.process.capture.auto_shutter",
-            "object.process.follow",
-            "object.process.capture.dark",
+            Item("object.process.active",
+                tooltip="capture and processing running"),
+            Item("object.process.capture.auto_shutter",
+                tooltip="automatically adjust the shutter time to "
+                "yield acceptably exposed frames with peak values "
+                "between .25 and .75"),
+            Item("object.process.follow",
+                tooltip="adjust the region of interest to follow the "
+                "beam center, the size is not adjusted"),
+            Item("object.process.capture.dark",
+                tooltip="capture a dark image and subtract it from "
+                "subsequent images, reset if gain or shutter change"),
         ), HGroup(
-            UItem("palette"),
-            "invert",
+            UItem("palette", tooltip="image colormap"),
+            Item("invert", tooltip="invert the colormap"),
         ), UItem("abplots", editor=ComponentEditor(),
                 width=-200, height=-300, resizable=False,
+                tooltip="line sums (red), moments (blue) and "
+                "2-sigma markers (green) along the major and minor axes",
         ),
-    ), UItem("plots", editor=ComponentEditor(),
-            width=800),
+    ), UItem("plots", editor=ComponentEditor(), width=800,
+            tooltip="top right: beam image with 1-sigma and 3-sigma "
+            "ellipses and axis markers (green). top left and bottom "
+            "right: vertial and horizontal line sums (red), moments "
+            "(blue) and 2-sigma markers (green). bottom left: beam data "
+            "from moments"),
     layout="split",
     ), resizable=True, title=u"Bullseye ― Beam Profiler", width=1000)
 
@@ -608,6 +645,7 @@ class Bullseye(HasTraits):
         self.screen.value_grid.visible = False
         px = self.process.capture.pixelsize
         w, h = self.process.capture.width, self.process.capture.height
+        # value_range last, see set_range()
         self.screen.index_range.low_setting = -w/2*px
         self.screen.index_range.high_setting = w/2*px
         self.screen.value_range.low_setting = -h/2*px
@@ -756,7 +794,7 @@ class Bullseye(HasTraits):
         l, r = self.screen.index_range.low, self.screen.index_range.high
         b, t = self.screen.value_range.low, self.screen.value_range.high
         px = self.process.capture.pixelsize
-        self.process.capture.roi = [l, b, (r-l), (t-b)]
+        self.process.capture.roi = [l, b, r-l, t-b]
 
     @on_trait_change("process.text")
     def set_text(self, value):
