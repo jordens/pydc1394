@@ -277,7 +277,7 @@ class Process(HasTraits):
     thread = Instance(Thread)
     active = Bool(False)
 
-    follow = Bool(False)
+    track = Bool(False)
     crops = Int(2) # crop iterations
     rad = Float(3/2.) # crop radius
 
@@ -334,7 +334,7 @@ class Process(HasTraits):
             if self.background > 0:
                     blackc = np.percentile(imc, self.background*100)
                     imc = imc-blackc
-                    np.clip(imc, 0, self.captue.maxval, out=imc)
+                    np.clip(imc, 0, self.capture.maxval, out=imc)
                     black += blackc
             m00, m10, m01, m20, m02, m11 = self.moments(imc)
             if i < self.crops-1:
@@ -458,7 +458,7 @@ class Process(HasTraits):
         fields = (self.x, self.y,
                 self.a, self.b,
                 self.t, self.e,
-                self.black, self.peak)
+                self.black, self.peak, self.ignore_radius)
 
         logging.info("beam: "+(("% 6.4g,"*len(fields)) % fields))
 
@@ -469,11 +469,11 @@ class Process(HasTraits):
             u"minor 4sig: %.4g µm\n"
             u"rotation: %.4g°\n"
             u"ellipticity: %.4g\n"
-            u"black: %.4g\n"
-            u"peak: %.4g\n"
+            u"black-peak: %.4g-%.4g\n"
+            u"include radius: %.4g µm\n"
             ) % fields
 
-    def do_follow(self):
+    def do_track(self):
         r = self.rad
         w, h = self.capture.roi[2:]
         x, y = float(self.x-w/2), float(self.y-h/2)
@@ -514,8 +514,8 @@ class Process(HasTraits):
         while self.active:
             im = self.capture.capture()
             self.process(im.copy())
-            if self.follow:
-                self.do_follow()
+            if self.track:
+                self.do_track()
         logging.debug("stop")
         self.capture.stop()
         self.thread = None
@@ -534,7 +534,7 @@ class Bullseye(HasTraits):
 
     process = Instance(Process)
 
-    palette = Enum("gray", "jet", "cool", "hot", "prism", "hsv")
+    palette = Enum("gray", "jet", "hot", "prism", "hsv")
     invert = Bool(True)
 
     label = None
@@ -602,11 +602,11 @@ class Bullseye(HasTraits):
             Item("object.process.active",
                 tooltip="capture and processing running"),
             Item("object.process.capture.auto_shutter",
-                tooltip="automatically adjust the shutter time to "
+                tooltip="adjust the shutter time to "
                 "yield acceptably exposed frames with peak values "
                 "between .25 and .75"),
-            Item("object.process.follow",
-                tooltip="adjust the region of interest to follow the "
+            Item("object.process.track",
+                tooltip="adjust the region of interest to track the "
                 "beam center, the size is not adjusted"),
             Item("object.process.capture.dark",
                 tooltip="capture a dark image and subtract it from "
@@ -620,8 +620,8 @@ class Bullseye(HasTraits):
                 "2-sigma markers (green) along the major and minor axes",
         ),
     ), UItem("plots", editor=ComponentEditor(), width=800,
-            tooltip="top right: beam image with 1-sigma and 3-sigma "
-            "ellipses and axis markers (green). top left and bottom "
+            tooltip="top right: beam image with 2-sigma and 6-sigma "
+            "radius ellipses and axis markers (green). top left and bottom "
             "right: vertial and horizontal line sums (red), moments "
             "(blue) and 2-sigma markers (green). bottom left: beam data "
             "from moments"),
@@ -776,7 +776,7 @@ class Bullseye(HasTraits):
         p.color_mapper.range.high_setting = b
 
     # TODO: bad layout at window creation, base layout for one
-    # frame at activation, follow
+    # frame at activation, track
     # value_range seems to be updated after index_range, take this
     @on_trait_change("screen.value_range.updated")
     def set_range(self):
