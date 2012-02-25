@@ -25,8 +25,8 @@ if ETSConfig.toolkit == "wx":
     constants.WindowColor = constants.wx.NullColor
 
 from traits.api import (HasTraits, Range, Int, Float, Enum, Bool,
-        Unicode, Str, ListFloat, Instance, Delegate,
-        on_trait_change, TraitError)
+        Unicode, Str, ListFloat, ListInt, Instance, Delegate, Trait,
+        Property, on_trait_change, TraitError, Array)
 
 from traitsui.api import (View, Item, UItem,
         HGroup, VGroup, DefaultOverride)
@@ -38,66 +38,207 @@ from chaco.tools.api import (ZoomTool, SaveTool, ImageInspectorTool,
 
 from enthought.enable.component_editor import ComponentEditor
 
-from pydc1394.camera2 import Camera as DC1394Camera, DC1394Error
-
 from special_sums import angle_sum, polar_sum
 
 import numpy as np
 
-import urlparse, logging, time, bisect
+import urlparse, logging, time, bisect, warnings
 from contextlib import closing
 from threading import Thread
 
+try:
+    from pydc1394.camera2 import Camera as DC1394Camera, DC1394Error
+except ImportError, e:
+    warnings.warn("pydc1394 cameras not available (%s)" % e)
+
+try:
+    from flycapture2 import (Context as Fc2Context,
+            ApiError as Fc2ApiError)
+except ImportError, e:
+    warnings.warn("flycapture2 cameras not available (%s)" % e)
+
 
 class Capture(HasTraits):
-    cam = Instance(DC1394Camera)
-
-    pixelsize = Float(3.75)
-    height = Int(960)
-    width = Int(1280)
+    pixelsize = Float(1.)
+    width = Int(640)
+    height = Int(480)
     maxval = Int((1<<8)-1)
-    min_shutter = 5e-6
-    max_shutter = 100e-3
-    gamma = 1. # 2 would be better for SNR: d/sigma_d = gamma n/sigma_n
 
-    shutter = Range(min_shutter, max_shutter, 1e-3)
+    min_shutter = 1.
+    max_shutter = 1.
+    shutter = Range(1.)
     auto_shutter = Bool(False)
-    gain = Range(0., 24., 0.)
-    framerate = Range(1, 10, 2)
-    average = Range(1, 20, 1)
+    gain = Range(1.)
+    framerate = Range(1.)
+    max_framerate = Property()
 
-    roi = ListFloat([-1280/2, -960/2, 1280, 960], minlen=4, maxlen=4)
+    roi = ListFloat(minlen=4, maxlen=4)
     
     dark = Bool(False)
-    darkim = None
+    darkim = Trait(None, None, Array)
+    average = Range(1, 20, 1)
     
     save_format = Str
 
-    def __init__(self, uri, **k):
+    im = Trait(None, None, Array)
+
+    def __init__(self, **k):
         super(Capture, self).__init__(**k)
-        scheme, loc, path, query, frag = urlparse.urlsplit(uri)
-        if scheme == "guid":
-            self.cam = DC1394Camera(path)
-        elif scheme == "first":
-            self.cam = DC1394Camera()
-        elif scheme == "none":
-            self.cam = None
-        self.im = None
-        if self.cam:
-            self.setup()
+        self.setup()
+        px = self.pixelsize
+        self.roi = [-self.width/px/2, -self.height/px/2,
+                self.width, self.height]
 
     def setup(self):
-        self.mode = self.cam.modes_dict["1280x960_Y8"]
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    @on_trait_change("shutter, gain")
+    def _unset_dark(self, val):
+        self.dark = False
+
+    @on_trait_change("dark")
+    def _do_dark(self):
+        self.darkim = None # invalidate
+
+    @on_trait_change("roi")
+    def update_bounds(self, roi):
+        l, b, w, h = roi
+        px = self.pixelsize
+        l = int(min(self.width, max(0, l/px+self.width/2)))
+        b = int(min(self.height, max(0, b/px+self.height/2)))
+        w = int(min(self.width-l, max(8, w/px)))
+        h = int(min(self.height-b, max(8, h/px)))
+        self.bounds = [l, b, w, h]
+
+    def _get_max_framerate(self):
+        return 1.
+
+    def dequeue(self):
+        raise NotImplementedError
+
+    def enqueue(self, im):
+        pass
+
+    def flush(self):
+        pass
+
+    def auto(self, im, percentile=99.9, maxiter=10,
+            minval=.25, maxval=.75, adjustment_factor=.5):
+        p = np.percentile(im, percentile)/float(self.maxval)
+        if not ((p < minval and self.shutter < self.max_shutter) or
+                (p > maxval and self.shutter > self.min_shutter)):
+            return im # early return before setting framerate
+        fr, self.framerate = self.framerate, self.max_framerate
+        for i in range(maxiter, 0, -1):
+            self.enqueue(im)
+            self.flush()
+            im = self.dequeue()
+            p = np.percentile(im, percentile)/float(self.maxval)
+            s = "="
+            if p > maxval and self.shutter > self.min_shutter:
+                self.shutter = max(self.min_shutter,
+                        self.shutter*adjustment_factor)
+                s = "-"
+            elif p < minval and self.shutter < self.max_shutter:
+                self.shutter = min(self.max_shutter,
+                        self.shutter/adjustment_factor)
+                s = "+"
+            logging.debug("1%%>%g, t%s: %g" % (p, s, self.shutter))
+            if s != "=":
+                # ensure all frames with old settings are gone
+                self.enqueue(self.dequeue())
+            else:
+                break
+        # revert framerate
+        self.framerate = fr
+        return im
+
+    def capture(self):
+        im = self.dequeue()
+        if self.auto_shutter:
+            im = self.auto(im)
+        if self.save_format:
+            name = time.strftime(self.save_format)
+            np.savez_compressed(name, im)
+            logging.debug("saved as %s" % name)
+        im_ = im.astype(np.float)
+        self.enqueue(im)
+        im = im_
+        if self.dark:
+            if self.darkim is None:
+                self.darkim = im
+                im = self.dequeue()
+                im_ = im.astype(np.float)
+                self.enqueue(im)
+                im = im_
+            im -= self.darkim
+        l, b, w, h = self.bounds
+        im = im[b:b+h, l:l+w]
+        if self.average > 1 and self.im.shape == im.shape:
+            self.im = (self.im*self.average + im)/(self.average + 1)
+        else:
+            self.im = im
+        return self.im
+
+
+class DummyCapture(Capture):
+    def dequeue(self):
+        px = self.pixelsize
+        x, y = 20., 30.
+        a, c = 50/4., 40/4.
+        m = .7
+        t = np.deg2rad(15.)
+        j, i = np.ogrid[:self.height, :self.width]
+        i, j = (i-self.width/2)*px-x, (j-self.height/2)*px-y
+        i, j = np.cos(t)*i+np.sin(t)*j, -np.sin(t)*i+np.cos(t)*j
+        im = self.maxval*m*np.exp(-((i/a)**2+(j/c)**2)/2)
+        im *= 1+np.random.randn(*im.shape)*.1
+        #im += np.random.randn(im.shape)*30
+        return (im+.5).astype(np.uint8)
+
+
+class DC1394Capture(Capture):
+    cam = Instance(DC1394Camera)
+
+    pixelsize = Float(3.75)
+    maxval = Int((1<<8)-1)
+    mode_name = Str("1280x960_Y8")
+
+    def __init__(self, guid, **k):
+        self.cam = DC1394Camera(guid)
+        super(DC1394Capture, self).__init__(**k)
+
+    def setup(self):
+        self.mode = self.cam.modes_dict[self.mode_name]
         self.cam.mode = self.mode
-        self.cam.setup(framerate=self.framerate,
-                gain=self.gain, shutter=self.shutter, gamma=self.gamma)
-        self.cam.setup(active=False,
-                exposure=None, brightness=None)
+        self.cam.setup(active=True, mode="manual", absolute=True,
+                framerate=None, gain=None, shutter=None) # gamma=None
+        self.cam.setup(active=False, exposure=None, brightness=None)
+        self.min_shutter = self.cam.shutter.absolute_range[0]
+        self.max_shutter = self.cam.shutter.absolute_range[1]
+        self.add_trait("shutter", Range(
+            self.cam.shutter.absolute_range[0],
+            self.cam.shutter.absolute_range[1],
+            self.cam.shutter.absolute_value))
+        self.add_trait("framerate", Range(
+            self.cam.framerate.absolute_range[0],
+            self.cam.framerate.absolute_range[1],
+            self.cam.framerate.absolute_value))
+        self.add_trait("gain", Range(
+            self.cam.gain.absolute_range[0],
+            self.cam.gain.absolute_range[1],
+            self.cam.gain.absolute_value))
+        self.width = self.mode.image_size[0]
+        self.height = self.mode.image_size[1]
         #self.cam[0x1098] |= 1<<25
 
     def start(self):
-        if not self.cam:
-            return
         try:
             self.cam.start_capture()
         except DC1394Error:
@@ -105,8 +246,6 @@ class Capture(HasTraits):
         self.cam.start_video()
 
     def stop(self):
-        if not self.cam:
-            return
         self.cam.stop_video()
         self.cam.stop_capture()
 
@@ -122,93 +261,15 @@ class Capture(HasTraits):
     def _do_gain(self, val):
         self.cam.gain.absolute = val
 
-    def auto(self, im, percentile=99.9, maxiter=10,
-            minval=.25, maxval=.75, adjustment_factor=.5):
-        p = np.percentile(im, percentile)/float(self.maxval)
-        if not ((p < minval and self.shutter < self.max_shutter) or
-                (p > maxval and self.shutter > self.min_shutter)):
-            return im
-        fr = self.cam.framerate.absolute
-        self.cam.framerate.absolute = max(
-                self.cam.framerate.absolute_range)
-        l, b, w, h = self.bounds()
-        while True:
-            with closing(self.cam.dequeue()) as im__:
-                im_ = im__[b:b+h, l:l+w].astype(np.int)
-                p = np.percentile(im_, percentile)/float(self.maxval)
-                s = "="
-                if p > maxval:
-                    self.shutter = max(self.min_shutter,
-                            self.shutter*adjustment_factor)
-                    s = "-"
-                elif p < minval:
-                    self.shutter = min(self.max_shutter,
-                            self.shutter/adjustment_factor)
-                    s = "+"
-                logging.debug("1%%>%g, t%s: %g" % (p, s, self.shutter))
-                if s == "=" or self.shutter in (self.min_shutter,
-                        self.max_shutter) or maxiter == 0:
-                    im = np.array(im_).copy()
-                    break
-            # ensure all frames with old settings are gone
-            self.cam.flush()
-            self.cam.dequeue().enqueue()
-            maxiter -= 1
-        # revert framerate
-        self.cam.framerate.absolute = fr
-        return im
+    def dequeue(self):
+        return self.cam.dequeue()
 
-    def bounds(self):
-        l, b, w, h = self.roi
-        l = int(min(self.width, max(0, l+self.width/2)))
-        b = int(min(self.height, max(0, b+self.height/2)))
-        w = int(min(self.width-l, max(8, w)))
-        h = int(min(self.height-b, max(8, h)))
-        return l, b, w, h
+    def enqueue(self, im):
+        im.enqueue()
 
-    def get_dummy(self):
-        px = self.pixelsize
-        l, b, w, h = self.bounds()
-        x, y = 600., 700.
-        a, c = 250/4., 150/4.
-        m = .8
-        t = np.deg2rad(15.)
-        j, i = np.ogrid[b:b+h, l:l+w]
-        i, j = (i-self.width/2)*px-x, (j-self.height/2)*px-y
-        i, j = np.cos(t)*i+np.sin(t)*j, -np.sin(t)*i+np.cos(t)*j
-        im = self.maxval*m*np.exp(-((i/a)**2+(j/c)**2)/2)
-        im *= 1+np.random.randn(*im.shape)*.2
-        #im += np.random.randn(im.shape)*30
-        return (im+.5).astype(np.int)
+    def flush(self):
+        self.cam.flush()
 
-    def capture(self):
-        if self.cam:
-            with closing(self.cam.dequeue()) as im_:
-                im = np.array(im_).copy().astype(np.int)
-            if self.dark:
-                if self.darkim is None:
-                    with closing(self.cam.dequeue()) as im_:
-                        self.darkim = np.array(im_).copy().astype(np.int)
-                im -= self.darkim
-            else:
-                if not (self.darkim is None):
-                    self.darkim = None
-            l, b, w, h = self.bounds()
-            im = im[b:b+h, l:l+w]
-            if self.auto_shutter:
-                im = self.auto(im) # TODO: correct for self.darkim
-            if self.save_format:
-                name = time.strftime(self.save_format)
-                np.savez_compressed(name, im)
-                logging.debug("saved as %s" % name)
-        else:
-            im = self.get_dummy()
-        if self.average > 1 and self.im.shape == im.shape:
-            # TODO: rounding errors since int
-            self.im = (self.im*self.average + im)/(self.average + 1)
-        else:
-            self.im = im
- 
 
 class Process(HasTraits):
     capture = Instance(Capture)
@@ -240,8 +301,8 @@ class Process(HasTraits):
 
     def initialize(self):
         self.capture.start()
-        self.capture.capture()
-        self.process()
+        im = self.capture.capture()
+        self.process(im.copy())
         self.capture.stop()
 
     def moments(self, im):
@@ -262,10 +323,9 @@ class Process(HasTraits):
         t = .5*np.arctan2(2*m11, m20-m02)
         return p, a, b, t
 
-    def process(self):
-        im = self.capture.im
+    def process(self, im):
         px = self.capture.pixelsize
-        l, b, w, h = self.capture.bounds()
+        l, b, w, h = self.capture.bounds
 
         imc = im
         lc, bc = 0, 0
@@ -414,16 +474,15 @@ class Process(HasTraits):
             ) % fields
 
     def do_follow(self):
-        px = self.capture.pixelsize
         r = self.rad
         w, h = self.capture.roi[2:]
-        x, y = float(self.x/px-w/2), float(self.y/px-h/2)
+        x, y = float(self.x-w/2), float(self.y-h/2)
         #rx, ry = r*4*self.m20**.5, r*4*self.m02**.5
         self.capture.roi = [x, y, w, h]
 
     @on_trait_change("active")
-    def _start_me(self, value):
-        if value:
+    def _start_me(self, active):
+        if active:
             if self.thread is not None:
                 if self.thread.is_alive():
                     logging.warning(
@@ -446,16 +505,15 @@ class Process(HasTraits):
                                 "capture thread crashed")
                         self.thread = None
             else:
-                logging.warning(
+                logging.debug(
                     "capture thread terminated")
 
     def run(self):
         logging.debug("start")
         self.capture.start()
         while self.active:
-            self.capture.capture()
-            self.process()
-            #logging.debug("image processed")
+            im = self.capture.capture()
+            self.process(im.copy())
             if self.follow:
                 self.do_follow()
         logging.debug("stop")
@@ -529,7 +587,7 @@ class Bullseye(HasTraits):
                 width=-200, height=-300, resizable=False,
         ),
     ), UItem("plots", editor=ComponentEditor(),
-            width=600),
+            width=800),
     layout="split",
     ), resizable=True, title=u"Bullseye ― Beam Profiler", width=1000)
 
@@ -698,7 +756,7 @@ class Bullseye(HasTraits):
         l, r = self.screen.index_range.low, self.screen.index_range.high
         b, t = self.screen.value_range.low, self.screen.value_range.high
         px = self.process.capture.pixelsize
-        self.process.capture.roi = [l/px, b/px, (r-l)/px, (t-b)/px]
+        self.process.capture.roi = [l, b, (r-l), (t-b)]
 
     @on_trait_change("process.text")
     def set_text(self, value):
@@ -724,7 +782,13 @@ def main():
     logging.basicConfig(filename=opts.log,
             level=getattr(logging, opts.debug.upper()),
             format='%(asctime)s %(levelname)s %(message)s')
-    cam = Capture(opts.camera)
+    scheme, loc, path, query, frag = urlparse.urlsplit(opts.camera)
+    if scheme == "guid":
+        cam = DC1394Capture(path)
+    elif scheme == "first":
+        cam = DC1394Capture(None)
+    elif scheme == "none":
+        cam = DummyCapture()
     proc = Process(capture=cam, save_format=opts.save)
     bull = Bullseye(process=proc)
     bull.configure_traits()
