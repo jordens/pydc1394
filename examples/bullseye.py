@@ -70,13 +70,13 @@ class Capture(HasTraits):
     auto_shutter = Bool(False)
     gain = Range(1.)
     framerate = Range(1.)
-    max_framerate = Property()
+    max_framerate = Float(1.)
 
     roi = ListFloat(minlen=4, maxlen=4)
     
     dark = Bool(False)
     darkim = Trait(None, None, Array)
-    average = Range(1, 20, 1)
+    average = Range(1., 20., 1.)
     
     save_format = Str
 
@@ -116,9 +116,6 @@ class Capture(HasTraits):
         h = int(min(self.height-b, max(8, h/px)))
         self.bounds = [l, b, w, h]
 
-    def _get_max_framerate(self):
-        return 1.
-
     def dequeue(self):
         raise NotImplementedError
 
@@ -135,7 +132,7 @@ class Capture(HasTraits):
                 (p > maxval and self.shutter > self.min_shutter)):
             return im # early return before setting framerate
         fr, self.framerate = self.framerate, self.max_framerate
-        for i in range(maxiter, 0, -1):
+        for i in range(maxiter):
             self.enqueue(im)
             self.flush()
             im = self.dequeue()
@@ -150,11 +147,11 @@ class Capture(HasTraits):
                         self.shutter/adjustment_factor)
                 s = "+"
             logging.debug("1%%>%g, t%s: %g" % (p, s, self.shutter))
-            if s != "=":
+            if s == "=":
+                break
+            else:
                 # ensure all frames with old settings are gone
                 self.enqueue(self.dequeue())
-            else:
-                break
         # revert framerate
         self.framerate = fr
         return im
@@ -178,12 +175,13 @@ class Capture(HasTraits):
                 self.enqueue(im)
                 im = im_
             im -= self.darkim
-        l, b, w, h = self.bounds
-        im = im[b:b+h, l:l+w]
         if self.average > 1 and self.im.shape == im.shape:
-            self.im = (self.im*self.average + im)/(self.average + 1)
+            self.im *= self.average/(self.average+1.)
+            self.im += im/(self.average+1.)
         else:
             self.im = im
+        l, b, w, h = self.bounds
+        im = im[b:b+h, l:l+w]
         return self.im
 
 
@@ -226,6 +224,7 @@ class DC1394Capture(Capture):
             self.cam.shutter.absolute_range[0],
             self.cam.shutter.absolute_range[1],
             self.cam.shutter.absolute_value))
+        self.max_framerate = self.cam.framerate.absolute_range[1]
         self.add_trait("framerate", Range(
             self.cam.framerate.absolute_range[0],
             self.cam.framerate.absolute_range[1],
@@ -283,7 +282,7 @@ class Process(HasTraits):
 
     background = Range(0., 1., 0.)
     ignore = Range(0., .5, .01)
-    ignore_radius = Float
+    include_radius = Float
 
     x = Float
     y = Float
@@ -343,9 +342,9 @@ class Process(HasTraits):
                     re = polar_sum(imc, center=(m01, m10),
                         direction="azimuthal", binsize=1.)
                     np.cumsum(re, out=re)
-                    rignore = bisect.bisect(re, (1.-self.ignore)*m00)
-                    self.ignore_radius = rignore*px
-                    w20 = w02 = rignore
+                    rinc = bisect.bisect(re, (1.-self.ignore)*m00)
+                    self.include_radius = rinc*px
+                    w20 = w02 = rinc
                 else: # crop based on 3 sigma region
                     w20 = self.rad*4*m20**.5
                     w02 = self.rad*4*m02**.5
@@ -458,7 +457,7 @@ class Process(HasTraits):
         fields = (self.x, self.y,
                 self.a, self.b,
                 self.t, self.e,
-                self.black, self.peak, self.ignore_radius)
+                self.black, self.peak, self.include_radius)
 
         logging.info("beam: "+(("% 6.4g,"*len(fields)) % fields))
 
@@ -547,7 +546,6 @@ class Bullseye(HasTraits):
                     format_str=u"%.4g µm",
                     tooltip="horizontal beam position relative to chip "
                     "center"),
-                # widths are full width at 1/e^2 intensity
                 Item("object.process.a", label="Major 4sig",
                     format_str=u"%.4g µm",
                     tooltip="major axis beam width 4 sigma ~ 1/e^2 width"),
@@ -575,7 +573,7 @@ class Bullseye(HasTraits):
                 #Item("object.process.peak", label="Peak",
                 #    format_str=u"%.4g",
                 #    tooltip="peak pixel level"),
-                Item("object.process.ignore_radius", label="Include radius",
+                Item("object.process.include_radius", label="Include radius",
                     format_str=u"%.4g µm",
                     tooltip="energy inclusion radius according to ignore "
                     "level, used to crop before taking moments"),
