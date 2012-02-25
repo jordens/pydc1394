@@ -45,6 +45,7 @@ import numpy as np
 import urlparse, logging, time, bisect, warnings
 from contextlib import closing
 from threading import Thread
+from collections import deque
 
 try:
     from pydc1394.camera2 import Camera as DC1394Camera, DC1394Error
@@ -76,11 +77,12 @@ class Capture(HasTraits):
     
     dark = Bool(False)
     darkim = Trait(None, None, Array)
-    average = Range(1., 20., 1.)
+    average = Range(1, 20, 1)
+    average_deque = Instance(deque, args=([], 20))
+
+    im = Array
     
     save_format = Str
-
-    im = Trait(None, None, Array)
 
     def __init__(self, **k):
         super(Capture, self).__init__(**k)
@@ -164,25 +166,30 @@ class Capture(HasTraits):
             name = time.strftime(self.save_format)
             np.savez_compressed(name, im)
             logging.debug("saved as %s" % name)
-        im_ = im.astype(np.float)
+        im_ = im.astype(np.int)
         self.enqueue(im)
         im = im_
         if self.dark:
             if self.darkim is None:
                 self.darkim = im
-                im = self.dequeue()
-                im_ = im.astype(np.float)
-                self.enqueue(im)
-                im = im_
-            im -= self.darkim
-        if self.average > 1 and self.im.shape == im.shape:
-            self.im *= self.average/(self.average+1.)
-            self.im += im/(self.average+1.)
-        else:
+                return None
+            else:
+                im -= self.darkim
+        if self.average == 1:
+            self.average_deque.clear()
+            self.average_deque.append(im)
             self.im = im
+        else:
+            if len(self.average_deque) == 1:
+                self.im = self.im.copy() # break ref
+            while len(self.average_deque) >= self.average:
+                self.im -= self.average_deque.popleft()
+            self.average_deque.append(im)
+            self.im += im
+            im = self.im/len(self.average_deque)
         l, b, w, h = self.bounds
         im = im[b:b+h, l:l+w]
-        return self.im
+        return im
 
 
 class DummyCapture(Capture):
@@ -314,7 +321,7 @@ class Process(HasTraits):
         m11 = (im*x*y).sum()/m00
         return m00, m10, m01, m20, m02, m11
 
-    def gauss_axes(self, m00, m10, m01, m20, m02, m11):
+    def gauss(self, m00, m10, m01, m20, m02, m11):
         p = m00/(2*np.pi*(m02*m20-m11**2)**.5)
         q = ((m20-m02)**2+4*m11**2)**.5
         a = 2*2**.5*(m20+m02+q)**.5
@@ -331,10 +338,10 @@ class Process(HasTraits):
         black = 0
         for i in range(self.crops):
             if self.background > 0:
-                    blackc = np.percentile(imc, self.background*100)
-                    imc = imc-blackc
-                    np.clip(imc, 0, self.capture.maxval, out=imc)
-                    black += blackc
+                blackc = np.percentile(imc, self.background*100)
+                imc = imc-blackc
+                np.clip(imc, 0, self.capture.maxval, out=imc)
+                black += blackc
             m00, m10, m01, m20, m02, m11 = self.moments(imc)
             if i < self.crops-1:
                 if self.ignore > 0: # crop based on encircled energy
@@ -355,7 +362,7 @@ class Process(HasTraits):
                       int(min(imc.shape[0], m01+w02)),
                       int(max(0, m10-w20)):
                       int(min(imc.shape[1], m10+w20))]
-        wp, wa, wb, wt = self.gauss_axes(m00, m10, m01, m20, m02, m11)
+        wp, wa, wb, wt = self.gauss(m00, m10, m01, m20, m02, m11)
 
         m10 += lc
         m01 += bc
@@ -512,6 +519,8 @@ class Process(HasTraits):
         self.capture.start()
         while self.active:
             im = self.capture.capture()
+            if im is None:
+                continue
             self.process(im.copy())
             if self.track:
                 self.do_track()
@@ -588,8 +597,7 @@ class Bullseye(HasTraits):
                 tooltip="frames per second to attempt, may be limited by "
                 "shutter time and processing speed"),
             Item("object.process.capture.average",
-                tooltip="number of subsequent images to average "
-                "with exponentially decaying weight"),
+                tooltip="number of subsequent images to boxcar average"),
             Item("object.process.background",
                 tooltip="background intensity percentile to subtract "
                 "from image"),
