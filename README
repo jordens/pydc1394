@@ -30,27 +30,3 @@ Point Grey Research offers for their camera an auto synchronization when they
 are attached to the same IEEE 1394 Bus. The SynchronizedCams Wrapper class
 takes two cameras that need to be opened with the same framerate and mode.
 SynchronizedCams.shot will then deliver two pictures taken at the same time. 
-
-
-Contributors
-============
-
-The library has seen contributions by the following persons:
-
-   Holger Rapp (KIT Karlsruhe, Germany)
-      HolgerRapp@gmx.net
-      user: sirver
-      Project starter, maintainer
-
-   Olvier Roulet (SINTEF, Norway)
-      user: olivier-roulet
-      Support for white balancing and color cameras
-
-   Tamas Haraszti (University of Heidelberg and
-         Max-Planck Institute for Metals Research,  Germany)
-      user: tomio2009
-      Support for triggers. More type safe wrapping of c-calls.
-
-   Robert Jordens 
-      user: jordens
-      Design and most of the implementation of Mode classes and Format 7 handling.

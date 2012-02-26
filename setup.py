@@ -26,6 +26,8 @@ try:
 except ImportError:
     from distutils import setup
 
+from glob import glob
+
 setup(
     name="pydc1394",
     version="1.0b",
@@ -35,5 +37,6 @@ setup(
     url="https://launchpad.net/pydc1394",
 
     packages = [ "pydc1394", "pydc1394.ui", "pydc1394.ui.qt", "pydc1394.ui.wx" ],
+    scripts = glob("examples/*.py"),
 )
 

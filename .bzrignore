@@ -2,3 +2,12 @@
 ./*.egg-info
 .git*
 ./doc/_build/*
+./*.egg-info
+./dist
+./build
+debian/*.debhelper
+debian/*.log
+debian/files
+debian/python-dc1394
+debian/*.substvars
+debian/*-stampdir
