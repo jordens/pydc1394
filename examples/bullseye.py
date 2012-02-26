@@ -450,7 +450,8 @@ class Process(HasTraits):
         gb = (m00/(np.pi**.5*wb/2/2**.5))*np.exp(-b**2*(2**.5*2/wb)**2)
 
         upd = dict((
-            ("img", im),
+            ("img", im[:,:,None].astype(np.uint8)*
+                np.array([[[1, 1, 1]]], dtype=np.uint8)),
             ("xbounds", xbounds), ("ybounds", ybounds),
             ("x", x*px), ("y", y*px),
             ("imx", imx), ("imy", imy),
@@ -807,7 +808,7 @@ class Bullseye(HasTraits):
     def set_colormap(self):
         p = self.screenplot
         m = color_map_name_dict[self.colormap]
-        p.color_mapper = m(p.value_range)
+        #p.color_mapper = m(p.value_range)
         self.set_invert()
         p.request_redraw()
 
@@ -818,8 +819,8 @@ class Bullseye(HasTraits):
             a, b = self.process.capture.maxval, 0
         else:
             a, b = 0, self.process.capture.maxval
-        p.color_mapper.range.low_setting = a
-        p.color_mapper.range.high_setting = b
+        #p.color_mapper.range.low_setting = a
+        #p.color_mapper.range.high_setting = b
 
     # TODO: bad layout for one frame at activation, track
     # value_range seems to be updated after index_range, take this
