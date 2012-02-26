@@ -299,7 +299,7 @@ class Fc2Capture(Capture):
     def start(self):
         try:
             self.ctx.start_capture()
-        except Fc2.ApiError:
+        except fc2.ApiError:
             logging.debug("camera capture already running")
 
     def stop(self):
