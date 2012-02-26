@@ -48,13 +48,12 @@ from threading import Thread
 from collections import deque
 
 try:
-    from pydc1394.camera2 import Camera as DC1394Camera, DC1394Error
+    from pydc1394 import camera2 as dc1394
 except ImportError, e:
     warnings.warn("pydc1394 cameras not available (%s)" % e)
 
 try:
-    from flycapture2 import (Context as Fc2Context,
-            ApiError as Fc2ApiError)
+    import flycapture2 as fc2
 except ImportError, e:
     warnings.warn("flycapture2 cameras not available (%s)" % e)
 
@@ -70,8 +69,8 @@ class Capture(HasTraits):
     shutter = Range(1.)
     auto_shutter = Bool(False)
     gain = Range(1.)
-    framerate = Range(1.)
-    max_framerate = Float(1.)
+    framerate = Range(1)
+    max_framerate = Int(1)
 
     roi = ListFloat(minlen=4, maxlen=4)
     
@@ -153,7 +152,8 @@ class Capture(HasTraits):
                 break
             else:
                 # ensure all frames with old settings are gone
-                self.enqueue(self.dequeue())
+                self.enqueue(im)
+                im = self.dequeue()
         # revert framerate
         self.framerate = fr
         return im
@@ -166,7 +166,7 @@ class Capture(HasTraits):
             name = time.strftime(self.save_format)
             np.savez_compressed(name, im)
             logging.debug("saved as %s" % name)
-        im_ = im.astype(np.int)
+        im_ = np.array(im, dtype=np.int, copy=True)
         self.enqueue(im)
         im = im_
         if self.dark:
@@ -209,14 +209,14 @@ class DummyCapture(Capture):
 
 
 class DC1394Capture(Capture):
-    cam = Instance(DC1394Camera)
+    cam = Instance(dc1394.Camera)
 
     pixelsize = Float(3.75)
     maxval = Int((1<<8)-1)
     mode_name = Str("1280x960_Y8")
 
     def __init__(self, guid, **k):
-        self.cam = DC1394Camera(guid)
+        self.cam = dc1394.Camera(guid)
         super(DC1394Capture, self).__init__(**k)
 
     def setup(self):
@@ -225,29 +225,28 @@ class DC1394Capture(Capture):
         self.cam.setup(active=True, mode="manual", absolute=True,
                 framerate=None, gain=None, shutter=None) # gamma=None
         self.cam.setup(active=False, exposure=None, brightness=None)
-        self.min_shutter = self.cam.shutter.absolute_range[0]
-        self.max_shutter = self.cam.shutter.absolute_range[1]
+        self.min_shutter = 1e-5 #round(self.cam.shutter.absolute_range[0], 5)
+        self.max_shutter = .1 #round(self.cam.shutter.absolute_range[1], 2)
         self.add_trait("shutter", Range(
-            self.cam.shutter.absolute_range[0],
-            self.cam.shutter.absolute_range[1],
-            self.cam.shutter.absolute_value))
-        self.max_framerate = self.cam.framerate.absolute_range[1]
+            self.min_shutter, self.max_shutter,
+            self.cam.shutter.absolute))
+        self.max_framerate = 10 #round(self.cam.framerate.absolute_range[1], 1)
         self.add_trait("framerate", Range(
-            self.cam.framerate.absolute_range[0],
-            self.cam.framerate.absolute_range[1],
-            self.cam.framerate.absolute_value))
+            1, #round(self.cam.framerate.absolute_range[0], 1),
+            10, #self.max_framerate,
+            int(self.cam.framerate.absolute)))
         self.add_trait("gain", Range(
-            self.cam.gain.absolute_range[0],
-            self.cam.gain.absolute_range[1],
-            self.cam.gain.absolute_value))
-        self.width = self.mode.image_size[0]
-        self.height = self.mode.image_size[1]
-        #self.cam[0x1098] |= 1<<25
+            0, #round(self.cam.gain.absolute_range[0], 0),
+            round(self.cam.gain.absolute_range[1], 0),
+            self.cam.gain.absolute))
+        self.width = int(self.mode.image_size[0])
+        self.height = int(self.mode.image_size[1])
+        self.cam[0x1098] |= 1<<25 # activate dark current noise reduction
 
     def start(self):
         try:
             self.cam.start_capture()
-        except DC1394Error:
+        except dc1394.DC1394Error:
             logging.debug("camera capture already running")
         self.cam.start_video()
 
@@ -268,7 +267,14 @@ class DC1394Capture(Capture):
         self.cam.gain.absolute = val
 
     def dequeue(self):
-        return self.cam.dequeue()
+        im = None
+        im_ = self.cam.dequeue()
+        while im_ is not None:
+            if im is not None:
+                im.enqueue()
+            im = im_
+            im_ = self.cam.dequeue(poll=True)
+        return im
 
     def enqueue(self, im):
         im.enqueue()
@@ -278,30 +284,30 @@ class DC1394Capture(Capture):
 
 
 class Fc2Capture(Capture):
-    ctx = Instance(Fc2Context)
+    ctx = Instance(fc2.Context)
 
     pixelsize = Float(3.75)
     maxval = Int((1<<8)-1)
     mode_name = Str("1280x960Y8")
 
     def __init__(self, index=0, **k):
-        self.ctx = Fc2Context()
+        self.ctx = fc2.Context()
         self.ctx.connect(*self.ctx.get_camera_from_index(index))
         super(Fc2Capture, self).__init__(**k)
 
     def start(self):
         try:
             self.ctx.start_capture()
-        except Fc2ApiError:
+        except Fc2.ApiError:
             logging.debug("camera capture already running")
 
     def stop(self):
         self.ctx.stop_capture()
 
     def dequeue(self):
-        im = Fc2Image()
-        self.ctx.retreive_buffer(im)
-        return im
+        im = fc2.Image()
+        self.ctx.retrieve_buffer(im)
+        return np.array(im)[:, :, 0]
 
 
 class Process(HasTraits):
@@ -311,8 +317,8 @@ class Process(HasTraits):
     active = Bool(False)
 
     track = Bool(False)
-    crops = Int(2) # crop iterations
-    rad = Float(3/2.) # crop radius
+    crops = Int(3) # crop iterations
+    rad = Float(3/2.) # crop radius in beam diameters
 
     background = Range(0., 1., 0.)
     ignore = Range(0., .5, .01)
@@ -378,6 +384,7 @@ class Process(HasTraits):
         return rinc, lc, bc, imc
 
     def process(self, im):
+        im = np.array(im)
         imc = im
         lc, bc = 0, 0
         black = 0
@@ -576,7 +583,7 @@ class Bullseye(HasTraits):
 
     process = Instance(Process)
 
-    palette = Enum("gray", "jet", "hot", "prism", "hsv")
+    colormap = Enum("gray", "jet", "hot", "prism", "hsv")
     invert = Bool(True)
 
     label = None
@@ -609,7 +616,6 @@ class Bullseye(HasTraits):
                 #Item("object.process.d", label="Mean width",
                 #    format_str=u"%.4g µm",
                 #    tooltip="mean beam width 4 sigma ~ 1/e^2 width"),
-                # minor/major
                 #Item("object.process.e", label="Ellipticity",
                 #    format_str=u"%.4g",
                 #    tooltip="ellipticity minor-to-major width ratio"),
@@ -652,7 +658,7 @@ class Bullseye(HasTraits):
                 tooltip="capture a dark image and subtract it from "
                 "subsequent images, reset if gain or shutter change"),
         ), HGroup(
-            UItem("palette", tooltip="image colormap"),
+            UItem("colormap", tooltip="image colormap"),
             Item("invert", tooltip="invert the colormap"),
         ), UItem("abplots", editor=ComponentEditor(),
                 width=-200, height=-300, resizable=False,
@@ -760,7 +766,7 @@ class Bullseye(HasTraits):
         self.screenplot = self.screen.img_plot("img",
                 xbounds="xbounds", ybounds="ybounds",
                 interpolation="nearest",
-                colormap=color_map_name_dict[self.palette],
+                colormap=color_map_name_dict[self.colormap],
                 )[0]
         self.set_invert()
         self.process.grid = self.screenplot.index
@@ -797,10 +803,10 @@ class Bullseye(HasTraits):
     def close(self):
         self.process.active = False
 
-    @on_trait_change("palette")
+    @on_trait_change("colormap")
     def set_colormap(self):
         p = self.screenplot
-        m = color_map_name_dict[self.palette]
+        m = color_map_name_dict[self.colormap]
         p.color_mapper = m(p.value_range)
         self.set_invert()
         p.request_redraw()
