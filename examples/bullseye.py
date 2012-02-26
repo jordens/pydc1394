@@ -277,6 +277,33 @@ class DC1394Capture(Capture):
         self.cam.flush()
 
 
+class Fc2Capture(Capture):
+    ctx = Instance(Fc2Context)
+
+    pixelsize = Float(3.75)
+    maxval = Int((1<<8)-1)
+    mode_name = Str("1280x960Y8")
+
+    def __init__(self, index=0, **k):
+        self.ctx = Fc2Context()
+        self.ctx.connect(*self.ctx.get_camera_from_index(index))
+        super(Fc2Capture, self).__init__(**k)
+
+    def start(self):
+        try:
+            self.ctx.start_capture()
+        except Fc2ApiError:
+            logging.debug("camera capture already running")
+
+    def stop(self):
+        self.ctx.stop_capture()
+
+    def dequeue(self):
+        im = Fc2Image()
+        self.ctx.retreive_buffer(im)
+        return im
+
+
 class Process(HasTraits):
     capture = Instance(Capture)
 
@@ -834,9 +861,13 @@ def main():
             format='%(asctime)s %(levelname)s %(message)s')
     scheme, loc, path, query, frag = urlparse.urlsplit(opts.camera)
     if scheme == "guid":
-        cam = DC1394Capture(path)
+        cam = DC1394Capture(long(path))
     elif scheme == "first":
         cam = DC1394Capture(None)
+    elif scheme == "fc2first":
+        cam = Fc2Capture(0)
+    elif scheme == "fc2index":
+        cam = Fc2Capture(int(path))
     elif scheme == "none":
         cam = DummyCapture()
     proc = Process(capture=cam, save_format=opts.save)
