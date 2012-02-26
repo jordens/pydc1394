@@ -272,6 +272,7 @@ class DC1394Capture(Capture):
         while im_ is not None:
             if im is not None:
                 im.enqueue()
+                logging.debug("dropped frame")
             im = im_
             im_ = self.cam.dequeue(poll=True)
         return im
