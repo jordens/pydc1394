@@ -2,17 +2,16 @@ Source: python-dc1394
 Section: python
 Priority: optional
 Maintainer: Robert Jordens <jordens@phys.ethz.ch>
-Build-Depends: cdbs,
- python-central (>= 0.6.0),
- python,
+Build-Depends: cdbs (>= 0.4.90~),
+ python (>= 2.6.6-3~),
  python-setuptools,
  debhelper (>= 5)
 XS-Python-Version: >=2.5
-Standards-Version: 3.9.1.0
+Standards-Version: 3.9.3
 
 Package: python-dc1394
 Architecture: all
-XB-Python-Version: ${python:Versions}
 Depends: ${misc:Depends}, ${python:Depends},
  libdc1394-22, python-numpy, python-ctypes
+Provides: ${python:Provides}
 Description: Python wrapper for libdc1394
