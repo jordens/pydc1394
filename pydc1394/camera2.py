@@ -659,14 +659,14 @@ class Mode(object):
 
     @property
     def dtype(self):
-	"""
-	A suitable numpy dtype string for the image array data.
-	Read-only.
-	"""
-	if self.color_coding.endswith("16"):
-	    return ">u2"
-	else:
-	    return ">u1"
+        """
+        A suitable numpy dtype string for the image array data.
+        Read-only.
+        """
+        if self.color_coding.endswith("16"):
+            return ">u2"
+        else:
+            return ">u1"
 
 class Exif(Mode):
     pass
@@ -940,7 +940,7 @@ class Format7(Mode):
         size = wu*int(image_size[0]/wu), hu*int(image_size[1]/hu)
         self.roi = size, position, color_coding, packet_size
         #return size, position, color_coding, packet_size
-	return self.roi
+        return self.roi
 
 
 _mode_map = {
