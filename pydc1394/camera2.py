@@ -739,7 +739,8 @@ class Format7(Mode):
         return hsize.value, vsize.value
 
     @image_size.setter
-    def image_size(self, width, height):
+    def image_size(self, value):
+        width, height = value
         _dll.dc1394_format7_set_image_size(
                 self._cam, self._mode_id,
                 width, height)
@@ -761,7 +762,8 @@ class Format7(Mode):
         return x.value, y.value
 
     @image_position.setter
-    def image_position(self, x, y):
+    def image_position(self, value):
+        x, y = value
         _dll.dc1394_format7_set_image_position(
                 self._cam, self._mode_id,
                 x, y)
