@@ -49,7 +49,7 @@ class DC1394Library(object):
     """
     This wraps the dc1394 library object which is a nuisance to have
     around. This is bad design on behalve of DC1394. Oh well...  This
-    object must stay valid untill all cameras are closed
+    object must stay valid until all cameras are closed
     But then use it well: it not only opens the library, collects
     a reference to the library and the camera list.
     """
@@ -331,7 +331,7 @@ class _CamAcquisitonThread(Thread):
             img = self._cam.capture(poll=False)
             self._cam._current_img = img
 
-            #is the camera streaming to a queue?
+            # is the camera streaming to a queue?
             if self._cam._queue:
                 # Will throw an exception if you're to slow while processing
                 self._cam._queue.put_nowait(img)
@@ -982,7 +982,7 @@ class Camera(object):
         "Threadsafe access to the current image of the camera"
         # We do proper locking
         self._new_image.acquire()
-        self._new_image.wait()
+        self._new_image.wait(3.)
         i = self._current_img
         self._new_image.release()
         return i
