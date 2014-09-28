@@ -1,7 +1,12 @@
 #!/usr/bin/python
 
-from pydc1394.camera2 import Camera
+from __future__ import (print_function, unicode_literals, division,
+        absolute_import)
+
+
+from pydc1394 import Camera
 import time
+
 
 def setup(cam, mode, gain, bright, shutter):
     cam.mode = cam.modes[mode]
@@ -34,7 +39,7 @@ def capture(cam, n):
     t = time.time()
     for i in range(n):
         im = cam.dequeue()
-        print i, (time.time()-t)/(i+1), im.frames_behind, im.frame_id
+        print(i, (time.time()-t)/(i+1), im.frames_behind, im.frame_id)
         im.enqueue()
     cam.stop_multi_shot()
     cam.stop_capture()

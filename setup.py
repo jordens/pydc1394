@@ -30,13 +30,12 @@ from glob import glob
 
 setup(
     name="pydc1394",
-    version="1.0b",
-    description="A Pythonic Wrapper around libdc1394 V2",
-    author = "Holger Rapp",
-    author_email = "sirver@users.sf.net",
-    url="https://launchpad.net/pydc1394",
-
-    packages = [ "pydc1394", "pydc1394.ui", "pydc1394.ui.qt", "pydc1394.ui.wx" ],
+    version="2.0",
+    description="A Pythonic Wrapper around libdc1394",
+    author = "Robert Jordens",
+    author_email = "jordens@gmail.com",
+    url="https://github.com/jordens/pydc1394",
+    packages = ["pydc1394"],
     scripts = glob("examples/*.py"),
 )
 

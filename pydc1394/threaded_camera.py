@@ -1,5 +1,4 @@
-#!/usr/bin/python
-# encoding: utf-8
+# -*- coding: utf-8 -*-
 # Copyright 2010 Robert Jordens <jordens@phys.ethz.ch>
 #
 # This file is part of pydc1394.
@@ -19,10 +18,21 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA  02110-1301  USA
 
-from pydc1394.camera2 import Camera
+from __future__ import (print_function, unicode_literals, division,
+        absolute_import)
+
 
 from threading import Thread, Condition, Event
-from Queue import Queue, Full
+try:
+    from queue import Queue, Full
+except ImportError:
+    from Queue import Queue, Full
+
+from . import Camera
+
+
+__all__ = ["ThreadedCamera"]
+
 
 class ThreadedCamera(Camera):
     def start(self, queue=0, mark_corrupt=True):

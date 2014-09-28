@@ -1,3 +1,4 @@
-*.pyc
-.bzr-repo
-.bzr
+/*.egg-info
+/build
+/dist
+/doc/build

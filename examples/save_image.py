@@ -21,21 +21,22 @@
 # and the pydc1394 contributors (see README File)
 
 
+
 import sys
 from time import sleep
-from pydc1394.camera2 import Camera
+from pydc1394 import Camera
 import Image
 
-print "Opening camera!"
+print("Opening camera!")
 cam0 = Camera()
 
-print "Vendor:", cam0.vendor
-print "Model:", cam0.model
-print "GUID:", cam0.guid
-print "Mode:", cam0.mode
-print "Framerate: ", cam0.rate
-print "Available modes", cam0.modes
-print "Available features", cam0.features
+print("Vendor:", cam0.vendor)
+print("Model:", cam0.model)
+print("GUID:", cam0.guid)
+print("Mode:", cam0.mode)
+print("Framerate: ", cam0.rate)
+print("Available modes", cam0.modes)
+print("Available features", cam0.features)
 
 #those can be automated, the other are manual
 try:
@@ -47,16 +48,16 @@ except AttributeError: # thrown if the camera misses one of the features
 
 
 for feat in cam0.features:
-    print "%s (cam0): %s" % (feat,cam0.__getattribute__(feat).value)
+    print("%s (cam0): %s" % (feat,cam0.__getattribute__(feat).value))
 
 #choose color mode
-print cam0.modes
+print(cam0.modes)
 cam0.mode = cam0.modes[0]
 
 cam0.start_capture()
 cam0.start_one_shot()
 matrix = cam0.dequeue()
-print "Shape:", matrix.shape
+print("Shape:", matrix.shape)
 i = Image.fromarray(matrix.copy())
 matrix.enqueue()
 cam0.stop_one_shot()

@@ -1,5 +1,5 @@
-#!/usr/bin/python
-# encoding: utf-8
+# -*- coding: utf-8 -*
+#
 # Copyright 2010 Robert Jordens <jordens@phys.ethz.ch>
 #
 # This file is part of pydc1394.
@@ -19,31 +19,20 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA  02110-1301  USA
 
-from pydc1394._dc1394core import _dll, DC1394Exception, DC1394Error
-from pydc1394._dc1394core import (camera_list_t, bool_t, switch_t,
-        featureset_t, FEATURE_NUM, feature_info_t,
-        feature_vals, feature_codes,
-        feature_modes_t, feature_mode_t,
-        feature_mode_vals, feature_mode_codes,
-        trigger_mode_t, trigger_mode_codes_short, trigger_mode_vals_short,
-        trigger_polarity_t,
-        trigger_polarity_vals_short, trigger_polarity_codes_short,
-        trigger_sources_t, trigger_source_t, 
-        trigger_source_vals_short, trigger_source_codes_short,
-        framerates_t, framerate_t, framerate_vals, framerate_codes,
-        video_frame_t, speed_t, speed_vals, speed_codes,
-        operation_mode_t, operation_mode_vals_short,
-        operation_mode_codes_short,
-        video_modes_t, video_mode_t,
-        video_mode_codes, video_mode_vals,
-        color_codings_t, color_coding_t,
-        color_coding_vals, color_coding_codes,
-        capture_flag_codes_short)
-from pydc1394._dc1394core import (QUERY_FROM_CAMERA, USE_RECOMMENDED,
-        USE_MAX_AVAIL, CAPTURE_POLICY_POLL, CAPTURE_POLICY_WAIT)
-from pydc1394.frame import Frame
-from ctypes import (byref, POINTER, c_uint32, c_int32, c_float)
 
+from __future__ import (print_function, unicode_literals, division,
+        absolute_import)
+
+from ctypes import byref, POINTER, c_uint32, c_int32, c_float
+
+from .dc1394 import *
+from .frame import *
+
+
+
+__all__ = ["Context", "Feature", "Trigger", "Whitebalance", "Whiteshading",
+    "Mode", "Format7", "Exif", "Camera", "DC1394Error", "DC1394Exception",
+    "Frame"]
 
 
 class Context(object):
@@ -68,7 +57,7 @@ class Context(object):
     _handle = None
 
     def __init__(self):
-        self._handle = _dll.dc1394_new()
+        self._handle = dll.dc1394_new()
 
     def __del__(self):
         self.close()
@@ -80,7 +69,7 @@ class Context(object):
         After calling this, all cameras in this context are invalid.
         """
         if self._handle is not None:
-            _dll.dc1394_free(self._handle)
+            dll.dc1394_free(self._handle)
         self._handle = None
 
     @property
@@ -97,10 +86,10 @@ class Context(object):
         If present, multiple cards will be probed.
         """
         cam_list = POINTER(camera_list_t)()
-        _dll.dc1394_camera_enumerate(self._handle, byref(cam_list))
+        dll.dc1394_camera_enumerate(self._handle, byref(cam_list))
         cams = [(cam.guid, cam.unit) for cam in
                 cam_list.contents.ids[:cam_list.contents.num]]
-        _dll.dc1394_camera_free_list(cam_list)
+        dll.dc1394_camera_free_list(cam_list)
         return cams
 
     def camera_handle(self, guid, unit=None):
@@ -114,14 +103,14 @@ class Context(object):
         camera is inaccessible.
         """
         if unit is None:
-            handle = _dll.dc1394_camera_new(
+            handle = dll.dc1394_camera_new(
                     self._handle, guid)
         else:
-            handle = _dll.dc1394_camera_new_unit(
+            handle = dll.dc1394_camera_new_unit(
                     self._handle, guid, unit)
         if not handle:
-            raise DC1394Exception, "Couldn't access camera (%s, %s)!" % (
-                    guid, unit)
+            raise DC1394Exception("Couldn't access camera (%s, %s)!" % (
+                    guid, unit))
         return handle
  
     def camera(self, guid, unit=None, **kwargs):
@@ -184,7 +173,7 @@ class Feature(object):
         Is the feature present on this camera? Read-only.
         """
         k = bool_t()
-        _dll.dc1394_feature_is_present(
+        dll.dc1394_feature_is_present(
                 self._cam, self._feature_id, byref(k))
         return k.value
 
@@ -196,7 +185,7 @@ class Feature(object):
         Use :attr:`active` to enable and disable this feature.
         """
         k = bool_t()
-        _dll.dc1394_feature_is_switchable(
+        dll.dc1394_feature_is_switchable(
                 self._cam, self._feature_id, byref(k))
         return bool(k.value)
 
@@ -206,13 +195,13 @@ class Feature(object):
         Current activation state of the feature.
         """
         k = bool_t()
-        _dll.dc1394_feature_get_power(
+        dll.dc1394_feature_get_power(
                 self._cam, self._feature_id, byref(k))
         return k.value
 
     @active.setter
     def active(self, value):
-        _dll.dc1394_feature_set_power(
+        dll.dc1394_feature_set_power(
             self._cam, self._feature_id, bool(value))
 
     @property
@@ -223,7 +212,7 @@ class Feature(object):
         Use :attr:`mode` to get or set the current mode.
         """
         modes = feature_modes_t()
-        _dll.dc1394_feature_get_modes(
+        dll.dc1394_feature_get_modes(
                 self._cam, self._feature_id, byref(modes))
         return [feature_mode_vals[i]
                 for i in modes.modes[:modes.num]]
@@ -240,14 +229,14 @@ class Feature(object):
         Use :attr:`modes` to obtain a list of allowed values.
         """
         mode = feature_mode_t()
-        _dll.dc1394_feature_get_mode(
+        dll.dc1394_feature_get_mode(
                 self._cam, self._feature_id, byref(mode))
         return feature_mode_vals[mode.value]
 
     @mode.setter
     def mode(self, mode):
         key = feature_mode_codes[mode]
-        _dll.dc1394_feature_set_mode(
+        dll.dc1394_feature_set_mode(
                 self._cam, self._feature_id, key)
 
     @property
@@ -257,7 +246,7 @@ class Feature(object):
         or :attr:`absolute`? Read-only.
         """
         k = bool_t()
-        _dll.dc1394_feature_is_readable(
+        dll.dc1394_feature_is_readable(
                 self._cam, self._feature_id, byref(k))
         return k.value
 
@@ -267,14 +256,14 @@ class Feature(object):
         The current value of this feature in arbitrary integer units.
         """
         val = c_uint32()
-        _dll.dc1394_feature_get_value(
+        dll.dc1394_feature_get_value(
                 self._cam, self._feature_id, byref(val))
         return val.value
 
     @value.setter
     def value(self, value):
         val = int(value)
-        _dll.dc1394_feature_set_value(
+        dll.dc1394_feature_set_value(
                 self._cam, self._feature_id, val)
 
     @property
@@ -283,7 +272,7 @@ class Feature(object):
         Minimum and maximum possible values for this feature. Read-only.
         """
         min_val, max_val = c_uint32(), c_uint32()
-        _dll.dc1394_feature_get_boundaries(
+        dll.dc1394_feature_get_boundaries(
                 self._cam, self._feature_id,
                 byref(min_val), byref(max_val))
         return min_val.value, max_val.value
@@ -294,7 +283,7 @@ class Feature(object):
         Can this feature be controlled in absolute units? Read-only.
         """
         k = bool_t()
-        _dll.dc1394_feature_has_absolute_control(
+        dll.dc1394_feature_has_absolute_control(
                 self._cam, self._feature_id, byref(k))
         return k.value
 
@@ -307,14 +296,14 @@ class Feature(object):
         feature what these absolute units are.
         """
         val = c_float()
-        _dll.dc1394_feature_get_absolute_value(
+        dll.dc1394_feature_get_absolute_value(
                 self._cam, self._feature_id, byref(val))
         return val.value
 
     @absolute.setter
     def absolute(self, value):
         val = float(value)
-        _dll.dc1394_feature_set_absolute_value(
+        dll.dc1394_feature_set_absolute_value(
                 self._cam, self._feature_id, val)
 
     @property
@@ -324,14 +313,14 @@ class Feature(object):
         integer or by physical units via :attr:`absolute`?
         """
         k = bool_t()
-        _dll.dc1394_feature_get_absolute_control(
+        dll.dc1394_feature_get_absolute_control(
                 self._cam, self._feature_id, byref(k))
         return k.value
 
     @absolute_control.setter
     def absolute_control(self, value):
         val = int(value)
-        _dll.dc1394_feature_set_absolute_control(
+        dll.dc1394_feature_set_absolute_control(
                 self._cam, self._feature_id, val)
 
     @property
@@ -341,7 +330,7 @@ class Feature(object):
         (physical) units. Read-only.
         """
         min_val, max_val = c_float(), c_float()
-        _dll.dc1394_feature_get_absolute_boundaries(
+        dll.dc1394_feature_get_absolute_boundaries(
                 self._cam, self._feature_id,
                 byref(min_val), byref(max_val))
         return min_val.value, max_val.value
@@ -383,14 +372,14 @@ class Trigger(Feature):
         Switches between internal and external trigger.
         """
         k = bool_t()
-        _dll.dc1394_external_trigger_get_power(
+        dll.dc1394_external_trigger_get_power(
                 self._cam, byref(k))
         return bool(k.value)
 
     @active.setter
     def active(self, value):
         k = bool(value)
-        _dll.dc1394_external_trigger_set_power(
+        dll.dc1394_external_trigger_set_power(
                 self._cam, k)
 
     @property
@@ -422,7 +411,7 @@ class Trigger(Feature):
         """
         finfo = feature_info_t()
         finfo.id = self._feature_id
-        _dll.dc1394_feature_get(
+        dll.dc1394_feature_get(
                 self._cam, byref(finfo))
         modes = finfo.trigger_modes
         return [trigger_mode_vals_short[i]
@@ -437,14 +426,14 @@ class Trigger(Feature):
         See :attr:`modes` for a documentation of the different modes.
         """
         mode = trigger_mode_t()
-        _dll.dc1394_external_trigger_get_mode(
+        dll.dc1394_external_trigger_get_mode(
                 self._cam, byref(mode))
         return trigger_mode_vals_short[mode.value]
 
     @mode.setter
     def mode(self, value):
         key = trigger_mode_codes_short[value]
-        _dll.dc1394_external_trigger_set_mode(
+        dll.dc1394_external_trigger_set_mode(
                 self._cam, key)
 
     @property
@@ -455,7 +444,7 @@ class Trigger(Feature):
         """
         finfo = feature_info_t()
         finfo.id = self._feature_id
-        _dll.dc1394_feature_get(self._cam, byref(finfo))
+        dll.dc1394_feature_get(self._cam, byref(finfo))
         return bool(finfo.polarity_capable)
     
     @property
@@ -466,14 +455,14 @@ class Trigger(Feature):
         Either ``"ACTIVE_LOW"`` or ``"ACTIVE_HIGH"``.
         """
         pol = trigger_polarity_t()
-        _dll.dc1394_external_trigger_get_polarity(
+        dll.dc1394_external_trigger_get_polarity(
                 self._cam, byref(pol))
         return trigger_polarity_vals_short[pol.value]
 
     @polarity.setter
     def polarity(self, pol):
         key = trigger_polarity_codes_short[pol]
-        _dll.dc1394_external_trigger_set_polarity(
+        dll.dc1394_external_trigger_set_polarity(
                 self._cam, key)
     
     @property
@@ -484,14 +473,14 @@ class Trigger(Feature):
         Some cameras let you select the external trigger input.
         """
         source = trigger_source_t()
-        _dll.dc1394_external_trigger_get_source(
+        dll.dc1394_external_trigger_get_source(
                 self._cam, byref(source))
         return trigger_source_vals_short[source.value]
 
     @source.setter
     def source(self, source):
         key = trigger_source_codes_short[source]
-        _dll.dc1394_external_trigger_set_source(
+        dll.dc1394_external_trigger_set_source(
                 self._cam, key)
 
     @property
@@ -502,7 +491,7 @@ class Trigger(Feature):
         Use :attr:`source` to get or set the current source.
         """
         src = trigger_sources_t()
-        _dll.dc1394_external_trigger_get_supported_sources(
+        dll.dc1394_external_trigger_get_supported_sources(
                 self._cam, byref(src))
         return [trigger_source_vals_short[i]
                 for i in src.sources[:src.num]]
@@ -513,14 +502,14 @@ class Trigger(Feature):
         Is the software trigger condition active?
         """
         res = switch_t()
-        _dll.dc1394_software_trigger_get_power(
+        dll.dc1394_software_trigger_get_power(
                 self._cam, byref(res))
         return bool(res.value)
 
     @software.setter
     def software(self, value):
         k = bool(value)
-        _dll.dc1394_software_trigger_set_power(
+        dll.dc1394_software_trigger_set_power(
                 self._cam, k)
 
 
@@ -533,14 +522,14 @@ class Whitebalance(Feature):
         the red or V (for YUV) channel.
         """
         blue, red = c_uint32(), c_uint32()
-        _dll.dc1394_feature_whitebalance_get_value(
+        dll.dc1394_feature_whitebalance_get_value(
             self._cam, byref(blue), byref(red))
         return blue.value, red.value
             
     @value.setter
     def value(self, value):
         blue, red = value
-        _dll.dc1394_feature_whitebalance_set_value(
+        dll.dc1394_feature_whitebalance_set_value(
                 self._cam, blue, red)
 
 
@@ -554,14 +543,14 @@ class Temperature(Feature):
         All temperatures are given in deci-degrees kelvin.
         """
         setpoint, current = c_uint32(), c_uint32()
-        _dll.dc1394_feature_temperature_get_value(
+        dll.dc1394_feature_temperature_get_value(
             self._cam, byref(setpoint), byref(current))
         return setpoint.value, current.value
             
     @value.setter
     def value(self, value):
         setpoint = int(value)
-        _dll.dc1394_feature_temperature_set_value(
+        dll.dc1394_feature_temperature_set_value(
                 self._cam, setpoint)
 
 
@@ -572,14 +561,14 @@ class Whiteshading(Feature):
         The current whiteshading value: a tuple of (red, green, blue)
         """
         red, green, blue = c_uint32(), c_uint32(), c_uint32()
-        _dll.dc1394_feature_whiteshading_get_value(
+        dll.dc1394_feature_whiteshading_get_value(
             self._cam, byref(red), byref(green), byref(blue))
         return red.value, green.value, blue.value
             
     @value.setter
     def value(self, value):
         red, green, blue = value
-        _dll.dc1394_feature_temperature_set_value(
+        dll.dc1394_feature_temperature_set_value(
                 self._cam, int(red), int(green), int(blue))
 
 
@@ -624,7 +613,7 @@ class Mode(object):
         Allowed framerates if the camera is in this mode. Read-only.
         """
         fpss = framerates_t()
-        _dll.dc1394_video_get_supported_framerates(
+        dll.dc1394_video_get_supported_framerates(
                 self._cam, self._mode_id, byref(fpss))
         return [framerate_vals[i]
                 for i in fpss.framerates[:fpss.num]]
@@ -636,7 +625,7 @@ class Mode(object):
         """
         w = c_uint32()
         h = c_uint32()
-        _dll.dc1394_get_image_size_from_video_mode(
+        dll.dc1394_get_image_size_from_video_mode(
                 self._cam, self._mode_id, byref(w), byref(h))
         return w.value, h.value
 
@@ -646,7 +635,7 @@ class Mode(object):
         The type of color coding of pixels. Read-only.
         """
         cc = color_coding_t()
-        _dll.dc1394_get_color_coding_from_video_mode(
+        dll.dc1394_get_color_coding_from_video_mode(
                 self._cam, self._mode_id, byref(cc))
         return color_coding_vals[cc.value]
 
@@ -655,7 +644,7 @@ class Mode(object):
         """
         Is this video mode scalable? Read-only.
         """
-        return bool(_dll.dc1394_is_video_mode_scalable(self._mode_id))
+        return bool(dll.dc1394_is_video_mode_scalable(self._mode_id))
 
     @property
     def dtype(self):
@@ -706,7 +695,7 @@ class Format7(Mode):
         features (if present) to influence the framerate.
         """
         fi = c_float()
-        _dll.dc1394_format7_get_frame_interval(self._cam,
+        dll.dc1394_format7_get_frame_interval(self._cam,
                     self._mode_id, byref(fi))
         return fi.value
 
@@ -718,7 +707,7 @@ class Format7(Mode):
         """
         hsize = c_uint32()
         vsize = c_uint32()
-        _dll.dc1394_format7_get_max_image_size(
+        dll.dc1394_format7_get_max_image_size(
                 self._cam, self._mode_id,
                 byref(hsize), byref(vsize))
         return hsize.value, vsize.value
@@ -733,7 +722,7 @@ class Format7(Mode):
         """
         hsize = c_uint32()
         vsize = c_uint32()
-        _dll.dc1394_format7_get_image_size(
+        dll.dc1394_format7_get_image_size(
                 self._cam, self._mode_id,
                 byref(hsize), byref(vsize))
         return hsize.value, vsize.value
@@ -741,7 +730,7 @@ class Format7(Mode):
     @image_size.setter
     def image_size(self, value):
         width, height = value
-        _dll.dc1394_format7_set_image_size(
+        dll.dc1394_format7_set_image_size(
                 self._cam, self._mode_id,
                 width, height)
 
@@ -756,7 +745,7 @@ class Format7(Mode):
         """
         x = c_uint32()
         y = c_uint32()
-        _dll.dc1394_format7_get_image_position(
+        dll.dc1394_format7_get_image_position(
                 self._cam, self._mode_id,
                 byref(x), byref(y))
         return x.value, y.value
@@ -764,7 +753,7 @@ class Format7(Mode):
     @image_position.setter
     def image_position(self, value):
         x, y = value
-        _dll.dc1394_format7_set_image_position(
+        dll.dc1394_format7_set_image_position(
                 self._cam, self._mode_id,
                 x, y)
 
@@ -774,7 +763,7 @@ class Format7(Mode):
         Allowed color codings in this mode. Read-only.
         """
         pos_codings = color_codings_t()
-        _dll.dc1394_format7_get_color_codings(
+        dll.dc1394_format7_get_color_codings(
                 self._cam, self._mode_id,
                 byref(pos_codings))
         return [color_coding_vals[i]
@@ -786,14 +775,14 @@ class Format7(Mode):
         The current color coding.
         """
         cc = color_coding_t()
-        _dll.dc1394_format7_get_color_coding(
+        dll.dc1394_format7_get_color_coding(
                 self._cam, self._mode_id, byref(cc))
         return color_coding_vals[cc.value]
 
     @color_coding.setter
     def color_coding(self, color):
         code = color_coding_codes[color]
-        _dll.dc1394_format7_set_color_coding(
+        dll.dc1394_format7_set_color_coding(
                 self._cam, self._mode_id, code)
 
     @property
@@ -804,7 +793,7 @@ class Format7(Mode):
         """
         h_unit = c_uint32()
         v_unit = c_uint32()
-        _dll.dc1394_format7_get_unit_position(
+        dll.dc1394_format7_get_unit_position(
                 self._cam, self._mode_id,
                 byref(h_unit), byref(v_unit))
         return h_unit.value, v_unit.value
@@ -816,7 +805,7 @@ class Format7(Mode):
         """
         h_unit = c_uint32()
         v_unit = c_uint32()
-        _dll.dc1394_format7_get_unit_size(
+        dll.dc1394_format7_get_unit_size(
                 self._cam, self._mode_id,
                 byref(h_unit), byref(v_unit))
         return h_unit.value, v_unit.value
@@ -837,7 +826,7 @@ class Format7(Mode):
         """
         w, h, x, y = c_int32(), c_int32(), c_int32(), c_int32()
         cco, packet_size = color_coding_t(), c_int32()
-        _dll.dc1394_format7_get_roi(
+        dll.dc1394_format7_get_roi(
             self._cam, self._mode_id, byref(cco), byref(packet_size),
             byref(x), byref(y), byref(w), byref(h))
         return ((w.value, h.value), (x.value, y.value),
@@ -846,7 +835,7 @@ class Format7(Mode):
     @roi.setter
     def roi(self, args):
         size, position, color, packet_size = args
-        _dll.dc1394_format7_set_roi(
+        dll.dc1394_format7_set_roi(
             self._cam, self._mode_id, color_coding_codes[color],
             packet_size, position[0], position[1], size[0], size[1])
 
@@ -856,7 +845,7 @@ class Format7(Mode):
         Recommended number of bytes per packet. Read-only.
         """
         packet_size = c_uint32()
-        _dll.dc1394_format7_get_recommended_packet_size(
+        dll.dc1394_format7_get_recommended_packet_size(
             self._cam, self._mode_id, byref(packet_size))
         return packet_size.value
 
@@ -871,7 +860,7 @@ class Format7(Mode):
         """
         packet_size_max = c_uint32()
         packet_size_unit = c_uint32()
-        _dll.dc1394_format7_get_packet_parameters(
+        dll.dc1394_format7_get_packet_parameters(
             self._cam, self._mode_id, byref(packet_size_unit),
             byref(packet_size_max))
         return packet_size_unit.value, packet_size_max.value
@@ -882,13 +871,13 @@ class Format7(Mode):
         Current number of bytes per packet.
         """
         packet_size = c_uint32()
-        _dll.dc1394_format7_get_packet_size(
+        dll.dc1394_format7_get_packet_size(
             self._cam, self._mode_id, byref(packet_size))
         return packet_size.value
 
     @packet_size.setter
     def packet_size(self, packet_size):
-        _dll.dc1394_format7_set_packet_size(
+        dll.dc1394_format7_set_packet_size(
             self._cam, self._mode_id, int(packet_size))
 
     @property
@@ -900,7 +889,7 @@ class Format7(Mode):
         Use :attr:`packet_size` to influence its value.
         """
         ppf = c_uint32()
-        _dll.dc1394_format7_get_total_bytes(
+        dll.dc1394_format7_get_total_bytes(
             self._cam, self._mode_id, byref(ppf))
         return ppf.value
 
@@ -911,7 +900,7 @@ class Format7(Mode):
         Need not be a multiple of 8.
         """
         dd = c_uint32()
-        _dll.dc1394_format7_get_data_depth(
+        dll.dc1394_format7_get_data_depth(
             self._cam, self._mode_id, byref(dd))
         return dd.value
 
@@ -921,7 +910,7 @@ class Format7(Mode):
         The number of pixels per frame. Read-only.
         """
         px = c_uint32()
-        _dll.dc1394_format7_get_pixel_number(
+        dll.dc1394_format7_get_pixel_number(
             self._cam, self._mode_id, byref(px))
         return px.value
 
@@ -1014,7 +1003,7 @@ class Camera(object):
         if handle is None:
             if context is None:
                 context = Context()
-            if isinstance(guid, basestring):
+            if isinstance(guid, str):
                 guid, unit = int(guid, 16), None
             elif guid is None:
                 guid, unit = context.cameras[0]
@@ -1048,7 +1037,7 @@ class Camera(object):
         Frees a camera structure.
         """
         if self._cam:
-            _dll.dc1394_camera_free(self._cam)
+            dll.dc1394_camera_free(self._cam)
         self._cam = None
         # do not invalidate the context here as someone else could be
         # using it.
@@ -1070,7 +1059,7 @@ class Camera(object):
         prevent the camera from heating up to much thereby reducing the 
         dark current and read-out noise.
         """
-        _dll.dc1394_camera_set_power(self._cam, on)
+        dll.dc1394_camera_set_power(self._cam, on)
 
     def reset_bus(self):
         """
@@ -1085,7 +1074,7 @@ class Camera(object):
         
         Call :meth:`close` as the camera handle is invalid afterwards.
         """
-        _dll.dc1394_reset_bus(self._cam)
+        dll.dc1394_reset_bus(self._cam)
 
     def reset_camera(self):
         """
@@ -1095,7 +1084,7 @@ class Camera(object):
         Call :meth:`close` after using this method as the camera handle
         becomes invalid.
         """
-        _dll.dc1394_camera_reset(self._cam)
+        dll.dc1394_camera_reset(self._cam)
 
     def memory_save(self, channel):
         """
@@ -1113,7 +1102,7 @@ class Camera(object):
            of times for a given camera, as it requires reprogramming of an
            EEPROM.
         """
-        _dll.dc1394_memory_save(self._cam, int(channel))
+        dll.dc1394_memory_save(self._cam, int(channel))
 
     def memory_load(self, channel):
         """
@@ -1121,7 +1110,7 @@ class Camera(object):
         
         Channel zero is the factory defaults.
         """
-        _dll.dc1394_memory_load(self._cam, int(channel))
+        dll.dc1394_memory_load(self._cam, int(channel))
 
     @property
     def memory_busy(self):
@@ -1134,7 +1123,7 @@ class Camera(object):
         function in the future.
         """
         v = bool_t()
-        _dll.dc1394_memory_busy(self._cam, byref(v))
+        dll.dc1394_memory_busy(self._cam, byref(v))
         return bool(v.value)
 
     def flush(self):
@@ -1146,11 +1135,11 @@ class Camera(object):
         """
         frame = POINTER(video_frame_t)()
         while True:
-            _dll.dc1394_capture_dequeue(self._cam,
+            dll.dc1394_capture_dequeue(self._cam,
                     CAPTURE_POLICY_POLL, byref(frame))
             if not bool(frame):
                 break
-            _dll.dc1394_capture_enqueue(self._cam,
+            dll.dc1394_capture_enqueue(self._cam,
                     frame)
 
     def dequeue(self, poll=False):
@@ -1167,7 +1156,7 @@ class Camera(object):
         """
         frame = POINTER(video_frame_t)()
         policy = poll and CAPTURE_POLICY_POLL or CAPTURE_POLICY_WAIT
-        _dll.dc1394_capture_dequeue(self._cam,
+        dll.dc1394_capture_dequeue(self._cam,
                 policy, byref(frame))
         if not bool(frame):
             return
@@ -1185,7 +1174,7 @@ class Camera(object):
         Use ``capture_flags`` to setup bandwidth and channel allocation
         and to enable automatic start of iso transmission.
         """
-        _dll.dc1394_capture_setup(
+        dll.dc1394_capture_setup(
                 self._cam, bufsize,
                 capture_flag_codes_short[capture_flags])
 
@@ -1193,43 +1182,43 @@ class Camera(object):
         """
         End the capture session.
         """
-        _dll.dc1394_capture_stop(self._cam)
+        dll.dc1394_capture_stop(self._cam)
 
     def start_video(self):
         """
         Instruct the camera to start capturing and transferring frames.
         """
-        _dll.dc1394_video_set_transmission(self._cam, 1)
+        dll.dc1394_video_set_transmission(self._cam, 1)
 
     def stop_video(self):
         """
         Instruct the camera to stop capturing and transmitting frames.
         """
-        _dll.dc1394_video_set_transmission(self._cam, 0)
+        dll.dc1394_video_set_transmission(self._cam, 0)
 
     def start_one_shot(self):
         """
         Instruct the camera to acquire and transmit exactly one frame.
         """
-        _dll.dc1394_video_set_one_shot(self._cam, 1)
+        dll.dc1394_video_set_one_shot(self._cam, 1)
 
     def stop_one_shot(self):
         """
         Stop single shot tramsission mode.
         """
-        _dll.dc1394_video_set_one_shot(self._cam, 0)
+        dll.dc1394_video_set_one_shot(self._cam, 0)
 
     def start_multi_shot(self, n):
         """
         Instruct the camera to acquire and transfer ``n`` frames.
         """
-        _dll.dc1394_video_set_multi_shot(self._cam, n, 1)
+        dll.dc1394_video_set_multi_shot(self._cam, n, 1)
 
     def stop_multi_shot(self):
         """
         Stop multi shot acquisition.
         """
-        _dll.dc1394_video_set_multi_shot(self._cam, 0, 0)
+        dll.dc1394_video_set_multi_shot(self._cam, 0, 0)
 
     @property
     def fileno(self):
@@ -1244,14 +1233,14 @@ class Camera(object):
         An alternative to blocking access with ``select()``
         is to use the polling mode of :meth:`dequeue`.
         """
-        return _dll.dc1394_capture_get_fileno(self._cam)
+        return dll.dc1394_capture_get_fileno(self._cam)
 
     def _load_features(self):
         """
         Return feature objects for all available features.
         """
         fs = featureset_t()
-        _dll.dc1394_feature_get_all(self._cam, byref(fs))
+        dll.dc1394_feature_get_all(self._cam, byref(fs))
         features = {}
         for i in range(FEATURE_NUM):
             s = fs.feature[i]
@@ -1287,7 +1276,7 @@ class Camera(object):
         of the camera.
         """
         modes = video_modes_t()
-        _dll.dc1394_video_get_supported_modes(self._cam, byref(modes))
+        dll.dc1394_video_get_supported_modes(self._cam, byref(modes))
         modes = [_mode_map[i](self._cam, i)
                 for i in modes.modes[:modes.num]]
         modes_dict = dict((m.name, m) for m in modes)
@@ -1312,7 +1301,7 @@ class Camera(object):
         Returns the current value of the register at address ``offset``.
         """
         val = c_uint32()
-        _dll.dc1394_get_control_registers(
+        dll.dc1394_get_control_registers(
                 self._cam, offset, byref(val), 1)
         return val.value
 
@@ -1321,7 +1310,7 @@ class Camera(object):
         Set the register at ``offset`` to ``value``.
         """
         val = c_uint32(value)
-        _dll.dc1394_set_control_registers(
+        dll.dc1394_set_control_registers(
                 self._cam, offset, byref(val), 1)
 
     # shortcuts for getting and setting registers.
@@ -1353,12 +1342,12 @@ class Camera(object):
            and has not been seen working yet. So use on your own risk.
         """
         k = bool_t()
-        _dll.dc1394_camera_get_broadcast(self._cam, byref(k))
+        dll.dc1394_camera_get_broadcast(self._cam, byref(k))
         return bool(k.value)
 
     @broadcast.setter
     def broadcast(self, value):
-        _dll.dc1394_camera_set_broadcast(self._cam, value)
+        dll.dc1394_camera_set_broadcast(self._cam, value)
 
     @property
     def model(self):
@@ -1406,12 +1395,12 @@ class Camera(object):
         Use :attr:`modes` to obtain a list of valid modes for this camera.
         """
         vmod = video_mode_t()
-        _dll.dc1394_video_get_mode(self._cam, byref(vmod))
+        dll.dc1394_video_get_mode(self._cam, byref(vmod))
         return self._modes_dict[video_mode_vals[vmod.value]]
 
     @mode.setter
     def mode(self, mode):
-        _dll.dc1394_video_set_mode(self._cam, mode.mode_id)
+        dll.dc1394_video_set_mode(self._cam, mode.mode_id)
 
     @property
     def rate(self):
@@ -1437,13 +1426,13 @@ class Camera(object):
            shutter time.
         """
         ft = framerate_t()
-        _dll.dc1394_video_get_framerate(self._cam, byref(ft))
+        dll.dc1394_video_get_framerate(self._cam, byref(ft))
         return framerate_vals[ft.value]
 
     @rate.setter
     def rate(self, framerate):
         wanted_frate = framerate_codes[framerate]
-        _dll.dc1394_video_set_framerate(self._cam, wanted_frate)
+        dll.dc1394_video_set_framerate(self._cam, wanted_frate)
     
     @property
     def iso_speed(self):
@@ -1458,14 +1447,14 @@ class Camera(object):
         :attr:`operation_mode`).
         """
         sp = speed_t()
-        _dll.dc1394_video_get_iso_speed(self._cam, byref(sp))
+        dll.dc1394_video_get_iso_speed(self._cam, byref(sp))
         return speed_vals[sp.value]
 
     @iso_speed.setter
     def iso_speed(self, iso_speed):
         sp = speed_codes[iso_speed]
         self.operation_mode = 'LEGACY' if iso_speed < 800 else '1394B'
-        _dll.dc1394_video_set_iso_speed(self._cam, sp)
+        dll.dc1394_video_set_iso_speed(self._cam, sp)
 
     @property
     def operation_mode(self):
@@ -1479,13 +1468,13 @@ class Camera(object):
         1394b. Legacy mode refers to speeds less than 400Mbps.
         """
         k = operation_mode_t()
-        _dll.dc1394_video_get_operation_mode(self._cam, byref(k))
+        dll.dc1394_video_get_operation_mode(self._cam, byref(k))
         return operation_mode_vals_short[k.value]
 
     @operation_mode.setter
     def operation_mode(self, value):
         k = operation_mode_codes_short[value]
-        _dll.dc1394_video_set_operation_mode(self._cam, k)
+        dll.dc1394_video_set_operation_mode(self._cam, k)
 
     @property
     def iso_channel(self):
@@ -1493,12 +1482,12 @@ class Camera(object):
         The current ISO channel.
         """
         channel = c_uint32()
-        _dll.dc1394_video_get_iso_channel(self._cam, byref(channel))
+        dll.dc1394_video_get_iso_channel(self._cam, byref(channel))
         return channel.value
 
     @iso_channel.setter
     def iso_channel(self, channel):
-        _dll.dc1394_video_set_iso_channel(self._cam, channel)
+        dll.dc1394_video_set_iso_channel(self._cam, channel)
 
     @property
     def data_depth(self):
@@ -1509,7 +1498,7 @@ class Camera(object):
         MONO16,...).
         """
         data_depth = c_uint32()
-        _dll.dc1394_video_get_data_depth(self._cam, byref(data_depth))
+        dll.dc1394_video_get_data_depth(self._cam, byref(data_depth))
         return data_depth.value
 
     @property
@@ -1526,7 +1515,7 @@ class Camera(object):
         clarifying this.
         """
         bandwidth = c_uint32()
-        _dll.dc1394_video_get_bandwidth_usage(self._cam, byref(bandwidth))
+        dll.dc1394_video_get_bandwidth_usage(self._cam, byref(bandwidth))
         return bandwidth.value
 
     def get_strobe(self, offset):
@@ -1534,21 +1523,21 @@ class Camera(object):
         The value of the strobe configuration register at ``offset``.
         """
         k = c_uint32()
-        _dll.dc1394_get_strobe_register(self._cam, offset, byref(k))
+        dll.dc1394_get_strobe_register(self._cam, offset, byref(k))
         return k.value
 
     def set_strobe(self, offset, value):
         """
         Set the strobe configuration register at ``offset`` to ``value``.
         """
-        _dll.dc1394_set_strobe_register(self._cam, offset, value)
+        dll.dc1394_set_strobe_register(self._cam, offset, value)
 
     def is_same_camera(self, other):
         """
         Tells whether two camera objects refer to the same physical
         camera unit.
         """
-        return bool(_dll.dc1394_is_same_camera(self._cam, other._cam))
+        return bool(dll.dc1394_is_same_camera(self._cam, other._cam))
 
     __eq__ = is_same_camera
 
@@ -1558,6 +1547,6 @@ class Camera(object):
         Gets the IEEE 1394 node ID of the camera.
         """
         node, generation = c_uint32(), c_uint32()
-        _dll.dc1394_camera_get_node(self._cam, byref(node),
+        dll.dc1394_camera_get_node(self._cam, byref(node),
                 byref(generation))
         return node.value, generation.value

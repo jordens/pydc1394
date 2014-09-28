@@ -1,5 +1,5 @@
-#!/usr/bin/python
-# encoding: utf-8
+# -*- coding: utf-8 -*-
+#
 # Copyright 2010 Robert Jordens <jordens@phys.ethz.ch>
 #
 # This file is part of pydc1394.
@@ -19,9 +19,16 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 # MA  02110-1301  USA
 
-from pydc1394._dc1394core import video_mode_vals, color_coding_vals, _dll
+from __future__ import (print_function, unicode_literals, division,
+        absolute_import)
+
 from ctypes import ARRAY, c_byte
 from numpy import ndarray
+
+from .dc1394 import *
+
+
+__all__ = ["Frame"]
 
 
 class Frame(ndarray):
@@ -101,9 +108,9 @@ class Frame(ndarray):
         be raised.
         """
         if not hasattr(self, "_frame"): # or self.base is not None:
-            raise AttributeError, "can only enqueue the original frame"
+            raise AttributeError("can only enqueue the original frame")
         if self._frame is not None:
-            _dll.dc1394_capture_enqueue(self._cam, self._frame)
+            dll.dc1394_capture_enqueue(self._cam, self._frame)
             self._frame = None
             self._cam = None
 
@@ -136,7 +143,7 @@ class Frame(ndarray):
            Corrupt frames still need to be enqueued with :meth:`enqueue`
            when no longer needed by the user.
         """
-        return bool(_dll.dc1394_capture_is_frame_corrupt(
+        return bool(dll.dc1394_capture_is_frame_corrupt(
                     self._cam, self._frame))
    
     def to_rgb(self):
@@ -149,7 +156,7 @@ class Frame(ndarray):
         res = ndarray(3*self.size, dtype='u1')
         shape = self.shape
         inp = ndarray(shape=len(self.data), buffer=self.data, dtype='u1')
-        _dll.dc1394_convert_to_RGB8(inp, res, 
+        dll.dc1394_convert_to_RGB8(inp, res, 
                 shape[1], shape[0], self.yuv_byte_order,
                 self.color_coding, self.data_depth)
         res.shape = shape[0], shape[1], 3
@@ -164,7 +171,7 @@ class Frame(ndarray):
         res = ndarray(self.size, dtype='u1')
         shape = self.shape
         inp = ndarray(shape=len(self.data), buffer=self.data, dtype='u1')
-        _dll.dc1394_convert_to_MONO8(inp, res,
+        dll.dc1394_convert_to_MONO8(inp, res,
                 shape[1], shape[0], self.yuv_byte_order,
                 self.color_coding, self.data_depth)
         res.shape = shape
@@ -179,7 +186,7 @@ class Frame(ndarray):
         res = ndarray(self.size, dtype='u1')
         shape = self.shape
         inp = ndarray(shape=len(self.data), buffer=self.data, dtype='u1')
-        _dll.dc1394_convert_to_YUV422(inp, res,
+        dll.dc1394_convert_to_YUV422(inp, res,
                 shape[1], shape[0], self.yuv_byte_order,
                 self.color_coding, self.data_depth)
         return ndarray(shape=shape, buffer=res.data, dtype='u2')

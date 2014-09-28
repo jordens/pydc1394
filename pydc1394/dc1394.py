@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# encoding: utf-8
+# -*- coding: utf-8 -*-
 #
 # This file is part of pydc1394.
 # 
@@ -23,27 +22,24 @@
 
 """This file wraps the dc1394 library functions"""
 
+from __future__ import (print_function, unicode_literals, division,
+        absolute_import)
+
+
 from ctypes import *
 from ctypes.util import find_library
 from numpy import ctypeslib as ct
 from numpy import uint8
-import sys
 
 
-_dll = cdll.LoadLibrary(find_library('dc1394'))
+dll = _dll = cdll.LoadLibrary(find_library('dc1394'))
 
 ###########################################################################
 #                                  ENUMS                                  #
 ###########################################################################
-#All these enum values should be transparent forth and back. The numbers
-#need to be interpreted in human readable form, but the user should also
-# be able to get the numbers back easily, even in an automated way
-#The standard ctypes way would define a variable for each enum value.
-#A dict structure should be more flexible.
 
 def invert_dict( to_invert ):
-    return dict((j, i) for i, j in to_invert.iteritems())
-#end invert_dict
+    return dict((j, i) for i, j in to_invert.items())
 
 #All error values to be interpreted:
 error_vals = {
@@ -1238,7 +1234,7 @@ _dll.dc1394_capture_is_frame_corrupt.argtypes = [ POINTER(camera_t), POINTER(vid
 #parameters: *source, *dest, width, height, source_color_coding, bits
 
 #make the converters numpy compatible:
-array_uint8 = ct.ndpointer( dtype=uint8, ndim=1, flags='C_CONTIGUOUS')
+array_uint8 = ct.ndpointer( dtype=uint8, ndim=1, flags=b'C_CONTIGUOUS')
 
 _dll.dc1394_convert_to_YUV422.restype = error_t
 _dll.dc1394_convert_to_YUV422.argtypes = [ array_uint8, array_uint8, c_uint32, \
