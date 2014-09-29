@@ -25,11 +25,14 @@
 from __future__ import (print_function, unicode_literals, division,
         absolute_import)
 
-
+import sys
 from ctypes import *
 from ctypes.util import find_library
 from numpy import ctypeslib as ct
 from numpy import uint8
+
+
+PY2 = sys.version_info[0] == 2
 
 
 dll = _dll = cdll.LoadLibrary(find_library('dc1394'))
@@ -1234,7 +1237,11 @@ _dll.dc1394_capture_is_frame_corrupt.argtypes = [ POINTER(camera_t), POINTER(vid
 #parameters: *source, *dest, width, height, source_color_coding, bits
 
 #make the converters numpy compatible:
-array_uint8 = ct.ndpointer( dtype=uint8, ndim=1, flags=b'C_CONTIGUOUS')
+if PY2:
+    flags = b'C_CONTIGUOUS'
+else:
+    flags = 'C_CONTIGUOUS'
+array_uint8 = ct.ndpointer( dtype=uint8, ndim=1, flags=flags)
 
 _dll.dc1394_convert_to_YUV422.restype = error_t
 _dll.dc1394_convert_to_YUV422.argtypes = [ array_uint8, array_uint8, c_uint32, \
