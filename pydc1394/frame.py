@@ -86,7 +86,7 @@ class Frame(ndarray):
 
         If called with an image object, inherit the properties of that image.
         """
-        if img == None:
+        if img is None:
             return
         # do not inherit _frame and _cam since we also get called on copy()
         # and should not hold references to the frame in this case
