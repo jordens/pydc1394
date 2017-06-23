@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2010 Robert Jordens <jordens@phys.ethz.ch>
+# Copyright 2010 Robert Jordens <robert@joerdens.org>
 #
 # This file is part of pydc1394.
 #

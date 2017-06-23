@@ -33,7 +33,7 @@ setup(
     version="2.0",
     description="A Pythonic Wrapper around libdc1394",
     author = "Robert Jordens",
-    author_email = "jordens@gmail.com",
+    author_email = "robert@joerdens.org",
     url="https://github.com/jordens/pydc1394",
     packages = ["pydc1394"],
     scripts = glob("examples/*.py"),
